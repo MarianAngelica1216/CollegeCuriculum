@@ -12,6 +12,7 @@ const state = {
   activeYear: 1,  // 1, 2, 3, 4, or 'all'
   bankFilter: 'unassigned', // 'unassigned', 'assigned', 'all'
   statusFilter: 'all', // 'all', 'finished', 'unfinished'
+  unitsFilter: 'all',  // 'all', '1', '2', '3', '4', '5+'
   colorFilter: 'all',  // 'all' or color hex code
   expandedCards: new Set(),
   searchTerm: '',
@@ -72,6 +73,7 @@ function cacheDOM() {
     repoFilterMenu: document.getElementById('repoFilterMenu'),
     closeRepoFilterMenuBtn: document.getElementById('closeRepoFilterMenuBtn'),
     repoStatusFilterSelect: document.getElementById('repoStatusFilterSelect'),
+    repoUnitsFilterSelect: document.getElementById('repoUnitsFilterSelect'),
     repoColorFilterSelect: document.getElementById('repoColorFilterSelect'),
     resetRepoFiltersBtn: document.getElementById('resetRepoFiltersBtn'),
     bankCardsContainer: document.getElementById('bankCardsContainer'),
@@ -271,6 +273,7 @@ function bindEvents() {
     const isHidden = dom.repoFilterMenu.classList.contains('hidden');
     if (isHidden) {
       renderRepoColorSwatches();
+      renderRepoUnitsFilterOptions();
       dom.repoFilterMenu.classList.remove('hidden');
       dom.repoFilterToggleBtn.classList.add('active');
     } else {
@@ -291,13 +294,24 @@ function bindEvents() {
     renderBankCards();
   });
 
+  if (dom.repoUnitsFilterSelect) {
+    dom.repoUnitsFilterSelect.addEventListener('change', (e) => {
+      state.unitsFilter = e.target.value;
+      updateRepoFilterIndicator();
+      renderBankCards();
+    });
+  }
+
   // Reset Repo Filters
   dom.resetRepoFiltersBtn.addEventListener('click', () => {
     state.statusFilter = 'all';
     state.colorFilter = 'all';
+    state.unitsFilter = 'all';
     dom.repoStatusFilterSelect.value = 'all';
+    if (dom.repoUnitsFilterSelect) dom.repoUnitsFilterSelect.value = 'all';
     updateRepoFilterIndicator();
     renderRepoColorSwatches();
+    renderRepoUnitsFilterOptions();
     renderBankCards();
   });
 
@@ -1299,8 +1313,44 @@ function renderRepoColorSwatches() {
   });
 }
 
+function renderRepoUnitsFilterOptions() {
+  const select = dom.repoUnitsFilterSelect;
+  if (!select) return;
+
+  const currentVal = state.unitsFilter || 'all';
+  select.innerHTML = '<option value="all">All Units</option>';
+
+  const uniqueUnits = new Set();
+  (state.courses || []).forEach(c => {
+    if (c.units !== undefined && c.units !== null) {
+      uniqueUnits.add(Number(c.units));
+    }
+  });
+
+  const sortedUnits = Array.from(uniqueUnits).sort((a, b) => a - b);
+  sortedUnits.forEach(u => {
+    const opt = document.createElement('option');
+    opt.value = String(u);
+    opt.textContent = `${u} Unit${u === 1 ? '' : 's'}`;
+    if (String(u) === String(currentVal)) {
+      opt.selected = true;
+    }
+    select.appendChild(opt);
+  });
+
+  if (sortedUnits.some(u => u >= 5)) {
+    const opt5 = document.createElement('option');
+    opt5.value = '5+';
+    opt5.textContent = '5+ Units';
+    if (currentVal === '5+') opt5.selected = true;
+    select.appendChild(opt5);
+  }
+
+  select.value = currentVal;
+}
+
 function updateRepoFilterIndicator() {
-  const hasActiveFilter = state.statusFilter !== 'all' || state.colorFilter !== 'all';
+  const hasActiveFilter = state.statusFilter !== 'all' || state.colorFilter !== 'all' || (state.unitsFilter && state.unitsFilter !== 'all');
   if (hasActiveFilter) {
     dom.repoFilterToggleBtn.classList.add('active');
   } else if (dom.repoFilterMenu.classList.contains('hidden')) {
@@ -1382,6 +1432,16 @@ function renderBankCards() {
   if (state.colorFilter && state.colorFilter !== 'all') {
     const targetColor = state.colorFilter.toLowerCase();
     filteredCourses = filteredCourses.filter(c => (c.color || '').toLowerCase() === targetColor);
+  }
+
+  // 3.5 Units Filter
+  if (state.unitsFilter && state.unitsFilter !== 'all') {
+    if (state.unitsFilter === '5+') {
+      filteredCourses = filteredCourses.filter(c => Number(c.units) >= 5);
+    } else {
+      const uVal = Number(state.unitsFilter);
+      filteredCourses = filteredCourses.filter(c => Number(c.units) === uVal);
+    }
   }
 
   // 4. Search Filter
