@@ -40,7 +40,6 @@ document.addEventListener('DOMContentLoaded', () => {
   cacheDOM();
   loadState();
   bindEvents();
-  initTouchDragAndDrop();
   render();
 });
 
@@ -77,6 +76,9 @@ function cacheDOM() {
     resetRepoFiltersBtn: document.getElementById('resetRepoFiltersBtn'),
     bankCardsContainer: document.getElementById('bankCardsContainer'),
     bankCountEl: document.getElementById('bankCount'),
+    bankCollapseToggleBtn: document.getElementById('bankCollapseToggleBtn'),
+    bankSquareBtn: document.getElementById('bankSquareBtn'),
+    squareBankCount: document.getElementById('squareBankCount'),
 
     // Modals & Toasts
     editModal: document.getElementById('editModal'),
@@ -166,6 +168,11 @@ function bindEvents() {
     });
   }
 
+  // Close row action slide panels on outside click
+  document.addEventListener('click', () => {
+    document.querySelectorAll('.row-actions-slide-panel').forEach(p => p.classList.add('hidden'));
+  });
+
   // Theme Toggle
   dom.themeToggleBtn.addEventListener('click', () => {
     state.theme = state.theme === 'dark' ? 'light' : 'dark';
@@ -191,18 +198,14 @@ function bindEvents() {
   // Year Tabs Switcher
   dom.yearTabsContainer.addEventListener('click', (e) => {
     if (e.target.classList.contains('tab-btn')) {
-      const year = e.target.dataset.year;
-      state.activeYear = parseInt(year, 10);
-      updateTabsUI();
-      renderCurriculumGrid();
+      const year = parseInt(e.target.dataset.year, 10);
+      switchActiveYear(year);
     }
   });
 
   // Full Matrix View Toggle
   dom.viewGridAllBtn.addEventListener('click', () => {
-    state.activeYear = 'all';
-    updateTabsUI();
-    renderCurriculumGrid();
+    switchActiveYear('all');
   });
 
   // Compare School Curriculum Toggle
@@ -215,6 +218,29 @@ function bindEvents() {
     openAddCourseModal();
   });
 
+  // Course Repository Collapse & Square Expand Button Toggle
+  if (dom.bankCollapseToggleBtn) {
+    dom.bankCollapseToggleBtn.addEventListener('click', () => {
+      dom.courseBankSidebar.classList.add('collapsed');
+      if (dom.bankSquareBtn) {
+        dom.bankSquareBtn.classList.remove('hidden');
+      }
+    });
+  }
+
+  if (dom.bankSquareBtn) {
+    dom.bankSquareBtn.addEventListener('click', () => {
+      dom.courseBankSidebar.classList.remove('collapsed');
+      dom.bankSquareBtn.classList.add('hidden');
+    });
+  }
+
+  // Recalculate sliding tab indicator positions on window resize
+  window.addEventListener('resize', () => {
+    updateTabsUI();
+    updateBankFilterTabsUI();
+  });
+
   // Search Filter in Sidebar
   dom.searchInput.addEventListener('input', (e) => {
     state.searchTerm = e.target.value.toLowerCase().trim();
@@ -225,8 +251,10 @@ function bindEvents() {
   dom.bankFilterGroup.addEventListener('click', (e) => {
     if (e.target.classList.contains('bank-filter-btn')) {
       state.bankFilter = e.target.dataset.filter;
-      updateBankFilterTabsUI();
       renderBankCards();
+      requestAnimationFrame(() => {
+        updateBankFilterTabsUI();
+      });
     }
   });
 
@@ -358,14 +386,32 @@ function updateColorPresetActiveUI() {
 
 function updateTabsUI() {
   const tabs = dom.yearTabsContainer.querySelectorAll('.tab-btn');
+  let activeTab = null;
   tabs.forEach(tab => {
     const y = tab.dataset.year;
     if (y === String(state.activeYear)) {
       tab.classList.add('active');
+      activeTab = tab;
     } else {
       tab.classList.remove('active');
     }
   });
+
+  // Update sliding year tab indicator pill
+  let indicator = dom.yearTabsContainer.querySelector('.year-tab-indicator');
+  if (!indicator) {
+    indicator = document.createElement('div');
+    indicator.className = 'year-tab-indicator';
+    dom.yearTabsContainer.appendChild(indicator);
+  }
+
+  if (activeTab) {
+    indicator.style.opacity = '1';
+    indicator.style.transform = `translateX(${activeTab.offsetLeft - 4}px)`;
+    indicator.style.width = `${activeTab.offsetWidth}px`;
+  } else {
+    indicator.style.opacity = '0';
+  }
 
   if (state.activeYear === 'all') {
     dom.viewGridAllBtn.classList.add('active');
@@ -406,13 +452,31 @@ function toggleCompareMode() {
 function updateBankFilterTabsUI() {
   if (!dom.bankFilterGroup) return;
   const btns = dom.bankFilterGroup.querySelectorAll('.bank-filter-btn');
+  let activeBtn = null;
   btns.forEach(btn => {
     if (btn.dataset.filter === state.bankFilter) {
       btn.classList.add('active');
+      activeBtn = btn;
     } else {
       btn.classList.remove('active');
     }
   });
+
+  // Update sliding bank filter tab indicator pill
+  let indicator = dom.bankFilterGroup.querySelector('.bank-tab-indicator');
+  if (!indicator) {
+    indicator = document.createElement('div');
+    indicator.className = 'bank-tab-indicator';
+    dom.bankFilterGroup.appendChild(indicator);
+  }
+
+  if (activeBtn) {
+    indicator.style.opacity = '1';
+    indicator.style.transform = `translateX(${activeBtn.offsetLeft - 4}px)`;
+    indicator.style.width = `${activeBtn.offsetWidth}px`;
+  } else {
+    indicator.style.opacity = '0';
+  }
 }
 
 // Master Render Function
@@ -574,10 +638,40 @@ function deleteTermTable(termId) {
   }
 }
 
+let currentSlideDirection = '';
+
+function getYearNumericIndex(y) {
+  if (y === 'all') return 5;
+  return parseInt(y, 10) || 1;
+}
+
+function switchActiveYear(targetYear) {
+  if (state.activeYear === targetYear) return;
+  const oldIndex = getYearNumericIndex(state.activeYear);
+  const newIndex = getYearNumericIndex(targetYear);
+
+  if (newIndex > oldIndex) {
+    currentSlideDirection = 'slide-left';
+  } else {
+    currentSlideDirection = 'slide-right';
+  }
+
+  state.activeYear = targetYear;
+  updateTabsUI();
+  renderCurriculumGrid();
+}
+
 // Render Main Curriculum Grid
 function renderCurriculumGrid() {
   const container = dom.curriculumContainer;
   container.innerHTML = '';
+
+  // Apply directional slide animation class
+  container.classList.remove('slide-left', 'slide-right');
+  void container.offsetWidth; // trigger reflow
+  if (currentSlideDirection) {
+    container.classList.add(currentSlideDirection);
+  }
 
   const conflicts = checkPrerequisites();
 
@@ -961,19 +1055,35 @@ function renderTermCard(year, term, conflicts, options) {
         <td class="col-prereqs">
           ${hasConflict
           ? `<span class="prereq-badge-warning" title="${escapeHTML(conflictDetail.invalidReqs.join('; '))}">⚠️ Prereq Issue</span>`
-          : formatPrereqPills(course.prerequisites)}
+          : (course.prerequisites && course.prerequisites.length > 0 ? formatPrereqPills(course.prerequisites) : '<span style="color:var(--text-muted); font-size:0.75rem">None</span>')}
         </td>
         <td class="col-actions">
           ${isReadOnly ? '<span style="font-size:0.7rem; color:var(--text-muted);">Read Only</span>' : `
-          <button class="action-btn-sm edit-term-course-btn" title="Edit course details" data-course-id="${course.id}">
-            <svg width="13" height="13" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path></svg>
-          </button>
-          <button class="action-btn-sm move-term-course-btn" title="Move course to another term" data-course-id="${course.id}">
-            <svg width="13" height="13" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12M8 12h12M8 17h12M4 7h.01M4 12h.01M4 17h.01"></path></svg>
-          </button>
-          <button class="action-btn-sm remove-course-btn" title="Remove from term" data-course-id="${course.id}" data-term-id="${termId}">
-            <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
-          </button>
+          <div class="row-actions-wrapper">
+            <button class="action-btn-sm row-menu-toggle-btn" title="Actions (Move, Reassign, Edit, Delete)" data-course-id="${course.id}">
+              <svg width="15" height="15" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z"></path>
+              </svg>
+            </button>
+            
+            <div class="row-actions-slide-panel hidden">
+              <button class="action-btn-sm move-up-course-btn" title="Move Up" data-course-id="${course.id}" data-term-id="${termId}">
+                <svg width="12" height="12" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 15l7-7 7 7"></path></svg>
+              </button>
+              <button class="action-btn-sm move-down-course-btn" title="Move Down" data-course-id="${course.id}" data-term-id="${termId}">
+                <svg width="12" height="12" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M19 9l-7 7-7-7"></path></svg>
+              </button>
+              <button class="action-btn-sm assign-term-course-btn" title="Reassign Term" data-course-id="${course.id}">
+                <svg width="13" height="13" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12M8 12h12M8 17h12M4 7h.01M4 12h.01M4 17h.01"></path></svg>
+              </button>
+              <button class="action-btn-sm edit-term-course-btn" title="Edit Course Details" data-course-id="${course.id}">
+                <svg width="13" height="13" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path></svg>
+              </button>
+              <button class="action-btn-sm remove-course-btn" title="Delete Course from Term" data-course-id="${course.id}" data-term-id="${termId}">
+                <svg width="13" height="13" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+              </button>
+            </div>
+          </div>
           `}
         </td>
       `;
@@ -987,21 +1097,56 @@ function renderTermCard(year, term, conflicts, options) {
           });
         }
 
+        // 3-dot toggle button
+        const menuToggleBtn = tr.querySelector('.row-menu-toggle-btn');
+        const slidePanel = tr.querySelector('.row-actions-slide-panel');
+        if (menuToggleBtn && slidePanel) {
+          menuToggleBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            document.querySelectorAll('.row-actions-slide-panel').forEach(p => {
+              if (p !== slidePanel) p.classList.add('hidden');
+            });
+            slidePanel.classList.toggle('hidden');
+          });
+        }
+
+        // Move Up button
+        const moveUpBtn = tr.querySelector('.move-up-course-btn');
+        if (moveUpBtn) {
+          moveUpBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            if (slidePanel) slidePanel.classList.add('hidden');
+            moveCourseUp(course.id, termId);
+          });
+        }
+
+        // Move Down button
+        const moveDownBtn = tr.querySelector('.move-down-course-btn');
+        if (moveDownBtn) {
+          moveDownBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            if (slidePanel) slidePanel.classList.add('hidden');
+            moveCourseDown(course.id, termId);
+          });
+        }
+
+        // Assign / Reassign course button
+        const assignTermBtn = tr.querySelector('.assign-term-course-btn');
+        if (assignTermBtn) {
+          assignTermBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            if (slidePanel) slidePanel.classList.add('hidden');
+            openAssignCourseModal(course);
+          });
+        }
+
         // Edit course details button
         const editTermBtn = tr.querySelector('.edit-term-course-btn');
         if (editTermBtn) {
           editTermBtn.addEventListener('click', (e) => {
             e.stopPropagation();
+            if (slidePanel) slidePanel.classList.add('hidden');
             openEditModal(course);
-          });
-        }
-
-        // Move course to another term button (1-tap selection on mobile)
-        const moveTermBtn = tr.querySelector('.move-term-course-btn');
-        if (moveTermBtn) {
-          moveTermBtn.addEventListener('click', (e) => {
-            e.stopPropagation();
-            openAssignTermModal(course);
           });
         }
 
@@ -1010,6 +1155,7 @@ function renderTermCard(year, term, conflicts, options) {
         if (removeBtn) {
           removeBtn.addEventListener('click', (e) => {
             e.stopPropagation();
+            if (slidePanel) slidePanel.classList.add('hidden');
             removeCourseFromTerm(termId, course.id);
           });
         }
@@ -1152,9 +1298,7 @@ function jumpToAssignedCourse(courseId, termId) {
   if (match) {
     const yearNum = parseInt(match[1], 10);
     if (state.activeYear !== 'all' && state.activeYear !== yearNum) {
-      state.activeYear = yearNum;
-      updateTabsUI();
-      renderCurriculumGrid();
+      switchActiveYear(yearNum);
     }
   }
 
@@ -1234,6 +1378,9 @@ function renderBankCards() {
   }
 
   dom.bankCountEl.textContent = filteredCourses.length;
+  if (dom.squareBankCount) {
+    dom.squareBankCount.textContent = filteredCourses.length;
+  }
 
   if (filteredCourses.length === 0) {
     let msg = 'No courses found.';
@@ -1252,9 +1399,12 @@ function renderBankCards() {
     const isExpanded = state.expandedCards.has(course.id);
     const assignedTermId = assignedMap.get(course.id);
     const isAssigned = !!assignedTermId;
+    const hasPrereqs = course.prerequisites &&
+      course.prerequisites.trim() !== '' &&
+      course.prerequisites.trim().toLowerCase() !== 'none';
 
     const card = document.createElement('div');
-    card.className = `course-card ${isAssigned ? 'assigned-card' : ''}`;
+    card.className = `course-card ${isAssigned ? 'assigned-card' : ''} ${isExpanded ? 'is-expanded' : ''}`;
     card.draggable = !isAssigned; // Only unassigned courses are draggable into terms
     card.dataset.type = 'bank-card';
     card.dataset.courseId = course.id;
@@ -1266,18 +1416,30 @@ function renderBankCards() {
           <div class="card-code">${escapeHTML(course.code)}</div>
         </div>
         <div class="card-right">
-          ${isAssigned ? `<span class="assigned-term-tag" title="Click to view course in table">${formatShortTermName(assignedTermId)}</span>` : `<button class="btn btn-primary quick-assign-btn" style="padding: 2px 7px; font-size: 0.72rem; border-radius: var(--radius-xs);" data-course-id="${course.id}" title="Assign course to a term table">+ Assign</button><span class="card-units-badge">${course.units}u</span>`}
-          <button class="card-expand-btn" data-course-id="${course.id}">
-            ${isExpanded ? '▲' : '▼'}
+          ${isAssigned ? `<span class="assigned-term-tag" title="Click to view course in table">${formatShortTermName(assignedTermId)}</span>` : `<span class="card-units-badge">${course.units}u</span>`}
+          <button class="card-expand-btn" data-course-id="${course.id}" title="Toggle Details">
+            <svg width="12" height="12" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M19 9l-7 7-7-7"></path>
+            </svg>
           </button>
         </div>
       </div>
-      <div class="card-details ${isExpanded ? '' : 'hidden'}">
-        <div class="card-name-title">${escapeHTML(course.name)}</div>
-        <div class="card-meta-item"><strong>Pre-reqs:</strong> ${escapeHTML(course.prerequisites)}</div>
-        <div class="card-actions">
-          <button class="btn btn-secondary edit-course-btn" style="padding: 3px 8px; font-size: 0.75rem;" data-course-id="${course.id}">Edit</button>
-          <button class="btn btn-secondary delete-course-btn" style="padding: 3px 8px; font-size: 0.75rem; color: var(--accent-rose);" data-course-id="${course.id}">Delete</button>
+      <div class="card-details-wrapper ${isExpanded ? 'expanded' : ''}">
+        <div class="card-details-content">
+          <div class="card-name-title">${escapeHTML(course.name)}</div>
+          ${hasPrereqs ? `<div class="card-meta-item"><strong>Pre-reqs:</strong> ${escapeHTML(course.prerequisites)}</div>` : ''}
+          <div class="card-actions">
+            <button class="btn btn-assign-course assign-course-btn" data-course-id="${course.id}">
+              <svg width="13" height="13" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12M8 12h12M8 17h12M4 7h.01M4 12h.01M4 17h.01"></path>
+              </svg>
+              <span>${isAssigned ? 'Reassign' : 'Assign'}</span>
+            </button>
+            <div class="card-actions-right">
+              <button class="btn btn-secondary edit-course-btn" style="padding: 3px 8px; font-size: 0.75rem;" data-course-id="${course.id}">Edit</button>
+              <button class="btn btn-secondary delete-course-btn" style="padding: 3px 8px; font-size: 0.75rem; color: var(--accent-rose);" data-course-id="${course.id}">Delete</button>
+            </div>
+          </div>
         </div>
       </div>
     `;
@@ -1288,7 +1450,9 @@ function renderBankCards() {
       card.addEventListener('click', (e) => {
         if (e.target.classList.contains('card-expand-btn') ||
           e.target.classList.contains('edit-course-btn') ||
-          e.target.classList.contains('delete-course-btn')) {
+          e.target.classList.contains('delete-course-btn') ||
+          e.target.classList.contains('assign-course-btn') ||
+          e.target.closest('.assign-course-btn')) {
           return;
         }
         jumpToAssignedCourse(course.id, assignedTermId);
@@ -1302,26 +1466,33 @@ function renderBankCards() {
       card.addEventListener('dragend', handleDragEnd);
     }
 
-    // Quick Assign button on card header
-    const quickAssignBtn = card.querySelector('.quick-assign-btn');
-    if (quickAssignBtn) {
-      quickAssignBtn.addEventListener('click', (e) => {
+    // Assign button click handler in expanded card details
+    const assignBtn = card.querySelector('.assign-course-btn');
+    if (assignBtn) {
+      assignBtn.addEventListener('click', (e) => {
         e.stopPropagation();
-        openAssignTermModal(course);
+        openAssignCourseModal(course);
       });
     }
 
-    // Expand/Collapse toggle
+    // Expand/Collapse toggle (local DOM toggle for 60fps smooth animation without re-rendering container)
     const expandBtn = card.querySelector('.card-expand-btn');
-    expandBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      if (state.expandedCards.has(course.id)) {
-        state.expandedCards.delete(course.id);
-      } else {
-        state.expandedCards.add(course.id);
-      }
-      renderBankCards();
-    });
+    const detailsWrapper = card.querySelector('.card-details-wrapper');
+    if (expandBtn) {
+      expandBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const isNowExpanded = !state.expandedCards.has(course.id);
+        if (isNowExpanded) {
+          state.expandedCards.add(course.id);
+          card.classList.add('is-expanded');
+          if (detailsWrapper) detailsWrapper.classList.add('expanded');
+        } else {
+          state.expandedCards.delete(course.id);
+          card.classList.remove('is-expanded');
+          if (detailsWrapper) detailsWrapper.classList.remove('expanded');
+        }
+      });
+    }
 
     // Edit button
     const editBtn = card.querySelector('.edit-course-btn');
@@ -1384,298 +1555,87 @@ function handleDropOnTerm(e, targetTermId) {
   draggedData = null;
 }
 
-// Pointer & Touch Drag Adapter supporting Edge Android, Huawei Browser, Chrome, Safari
-function initTouchDragAndDrop() {
-  let touchDragActive = false;
-  let touchStartPos = { x: 0, y: 0 };
-  let touchDragData = null;
-  let touchDragSourceEl = null;
-  let dragCloneEl = null;
-  let activePointerId = null;
-
-  function isControlElement(el) {
-    return !!el.closest('button, input, select, a, .native-color-picker, .card-expand-btn, .edit-course-btn, .delete-course-btn, .action-btn-sm, .delete-term-btn, .term-status-badge, .quick-assign-btn, .move-term-course-btn');
-  }
-
-  function handleStart(clientX, clientY, target, pointerId = null) {
-    if (isControlElement(target)) return;
-
-    const cardEl = target.closest('.course-card[draggable="true"], .course-card[data-type="bank-card"]');
-    const rowEl = target.closest('tr.course-row[draggable="true"], tr[data-type="term-row"]');
-    const draggableEl = cardEl || rowEl;
-    if (!draggableEl) return;
-
-    touchStartPos = { x: clientX, y: clientY };
-    touchDragSourceEl = draggableEl;
-    activePointerId = pointerId;
-
-    if (cardEl && !cardEl.classList.contains('assigned-card')) {
-      touchDragData = {
-        type: 'bank-card',
-        courseId: cardEl.dataset.courseId
-      };
-    } else if (rowEl && rowEl.dataset.courseId) {
-      touchDragData = {
-        type: 'term-row',
-        courseId: rowEl.dataset.courseId,
-        fromTerm: rowEl.dataset.fromTerm
-      };
-    } else {
-      touchDragData = null;
-      return;
-    }
-
-    // Capture pointer immediately on touch start so Edge Android / Huawei gesture navigation cannot steal/cancel drag
-    if (pointerId !== null && draggableEl.setPointerCapture) {
-      try { draggableEl.setPointerCapture(pointerId); } catch (err) {}
-    }
-  }
-
-  function handleMove(clientX, clientY, originalEvent) {
-    if (!touchDragSourceEl || !touchDragData) return;
-
-    const dx = clientX - touchStartPos.x;
-    const dy = clientY - touchStartPos.y;
-    const dist = Math.hypot(dx, dy);
-
-    if (!touchDragActive) {
-      if (dist > 6) {
-        touchDragActive = true;
-        draggedData = touchDragData;
-        touchDragSourceEl.classList.add('dragging');
-
-        // Create floating preview clone
-        dragCloneEl = touchDragSourceEl.cloneNode(true);
-        dragCloneEl.classList.add('touch-drag-clone');
-        dragCloneEl.style.position = 'fixed';
-        dragCloneEl.style.pointerEvents = 'none';
-        dragCloneEl.style.zIndex = '99999';
-        dragCloneEl.style.opacity = '0.92';
-        dragCloneEl.style.width = Math.min(touchDragSourceEl.offsetWidth, 320) + 'px';
-        dragCloneEl.style.transform = 'translate(-50%, -50%) scale(1.03)';
-        dragCloneEl.style.boxShadow = '0 12px 28px rgba(0,0,0,0.5)';
-        dragCloneEl.style.borderRadius = '8px';
-        dragCloneEl.style.background = 'var(--panel-bg)';
-        dragCloneEl.style.border = '2px solid var(--accent-primary)';
-        document.body.appendChild(dragCloneEl);
-
-        if (navigator.vibrate) {
-          try { navigator.vibrate(25); } catch (err) {}
-        }
-      } else {
-        return;
-      }
-    }
-
-    if (touchDragActive) {
-      if (originalEvent && originalEvent.cancelable) originalEvent.preventDefault();
-
-      if (dragCloneEl) {
-        dragCloneEl.style.left = clientX + 'px';
-        dragCloneEl.style.top = clientY + 'px';
-      }
-
-      // Auto-scroll window if finger is near top or bottom screen edge
-      if (clientY < 90) {
-        window.scrollBy({ top: -14, behavior: 'instant' });
-      } else if (clientY > window.innerHeight - 90) {
-        window.scrollBy({ top: 14, behavior: 'instant' });
-      }
-
-      // Highlight drop target under finger
-      const targetEl = document.elementFromPoint(clientX, clientY);
-      clearTouchHoverStates();
-
-      if (targetEl) {
-        const hoverRow = targetEl.closest('tr.course-row');
-        const hoverTermCard = targetEl.closest('.term-card');
-        const hoverBank = targetEl.closest('.course-bank-sidebar, .bank-cards-container, .bank-panel');
-
-        if (hoverRow && hoverRow !== touchDragSourceEl) {
-          const rect = hoverRow.getBoundingClientRect();
-          const isUpperHalf = clientY < (rect.top + rect.height / 2);
-          hoverRow.classList.add(isUpperHalf ? 'drag-over-top' : 'drag-over-bottom');
-        } else if (hoverTermCard) {
-          hoverTermCard.classList.add('drag-over-active');
-        } else if (hoverBank && touchDragData.fromTerm) {
-          const bankCards = document.getElementById('bankCardsContainer');
-          if (bankCards) bankCards.classList.add('drag-over-active');
-        }
-      }
-    }
-  }
-
-  function handleEnd(clientX, clientY) {
-    if (!touchDragActive || !touchDragData) {
-      cleanupTouchDrag();
-      return;
-    }
-
-    const targetEl = document.elementFromPoint(clientX, clientY);
-
-    if (targetEl) {
-      const hoverRow = targetEl.closest('tr.course-row');
-      const hoverTermCard = targetEl.closest('.term-card');
-      const hoverBank = targetEl.closest('.course-bank-sidebar, .bank-cards-container, .bank-panel');
-
-      if (hoverRow) {
-        const termId = hoverRow.dataset.fromTerm || hoverRow.closest('.term-table-body')?.dataset.termId;
-        if (termId) {
-          const rect = hoverRow.getBoundingClientRect();
-          const isUpperHalf = clientY < (rect.top + rect.height / 2);
-          const termList = state.curriculum[termId] || [];
-          let targetIdx = termList.indexOf(hoverRow.dataset.courseId);
-          if (targetIdx === -1) targetIdx = termList.length;
-          if (!isUpperHalf) targetIdx += 1;
-
-          moveCourseToPosition(touchDragData.fromTerm, touchDragData.courseId, termId, targetIdx);
-          showToast(`Moved course into term position`);
-        }
-      } else if (hoverTermCard) {
-        const termId = hoverTermCard.dataset.termId;
-        if (termId) {
-          addCourseToTerm(termId, touchDragData.courseId);
-          showToast(`Added course to ${formatTermName(termId)}`);
-        }
-      } else if (hoverBank && touchDragData.fromTerm) {
-        removeCourseFromTerm(touchDragData.fromTerm, touchDragData.courseId);
-        showToast(`Removed course back to repository`);
-      }
-    }
-
-    cleanupTouchDrag();
-    draggedData = null;
-  }
-
-  function cleanupTouchDrag() {
-    if (touchDragSourceEl && touchDragSourceEl.releasePointerCapture && activePointerId !== null) {
-      try { touchDragSourceEl.releasePointerCapture(activePointerId); } catch (err) {}
-    }
-    if (dragCloneEl) {
-      dragCloneEl.remove();
-      dragCloneEl = null;
-    }
-    if (touchDragSourceEl) {
-      touchDragSourceEl.classList.remove('dragging');
-      touchDragSourceEl = null;
-    }
-    clearTouchHoverStates();
-    touchDragActive = false;
-    touchDragData = null;
-    activePointerId = null;
-  }
-
-  function clearTouchHoverStates() {
-    document.querySelectorAll('.term-card, .bank-cards-container, #bankCardsContainer').forEach(el => {
-      el.classList.remove('drag-over-active');
-    });
-    document.querySelectorAll('.course-row').forEach(el => {
-      el.classList.remove('drag-over-top', 'drag-over-bottom');
-    });
-  }
-
-  const hasPointerEvents = 'PointerEvent' in window;
-
-  if (hasPointerEvents) {
-    // Pointer Events (Edge Android, Huawei Browser, Chrome Mobile, Safari)
-    document.addEventListener('pointerdown', (e) => {
-      if (e.pointerType === 'mouse') return;
-      handleStart(e.clientX, e.clientY, e.target, e.pointerId);
-    }, { passive: true });
-
-    document.addEventListener('pointermove', (e) => {
-      if (e.pointerType === 'mouse') return;
-      handleMove(e.clientX, e.clientY, e);
-    }, { passive: false });
-
-    document.addEventListener('pointerup', (e) => {
-      if (e.pointerType === 'mouse') return;
-      handleEnd(e.clientX, e.clientY);
-    });
-
-    document.addEventListener('pointercancel', cleanupTouchDrag);
-  } else {
-    // Fallback Touch Events (Legacy mobile browsers)
-    document.addEventListener('touchstart', (e) => {
-      if (e.touches.length !== 1) return;
-      const touch = e.touches[0];
-      handleStart(touch.clientX, touch.clientY, e.target);
-    }, { passive: true });
-
-    document.addEventListener('touchmove', (e) => {
-      if (e.touches.length !== 1) return;
-      const touch = e.touches[0];
-      handleMove(touch.clientX, touch.clientY, e);
-    }, { passive: false });
-
-    document.addEventListener('touchend', (e) => {
-      if (e.changedTouches.length > 0) {
-        const touch = e.changedTouches[0];
-        handleEnd(touch.clientX, touch.clientY);
-      }
-    });
-
-    document.addEventListener('touchcancel', cleanupTouchDrag);
-  }
-}
-
-// 1-Tap Term Assignment Modal (For Edge Android, Huawei, and Mobile devices)
-function openAssignTermModal(course) {
-  const availableTerms = [];
-  YEARS.forEach(y => {
-    const termNums = getTermNumbersForYear(y, state.curriculum);
-    termNums.forEach(t => {
-      availableTerms.push({
-        id: `y${y}-t${t}`,
-        label: `Year ${y} - Term ${t}`
-      });
-    });
-  });
-
-  dom.editModal.innerHTML = `
-    <div class="modal-card">
-      <div class="modal-header">
-        <div class="modal-title">Assign ${escapeHTML(course.code)}</div>
-        <button class="close-modal-btn" id="modalCloseBtn">&times;</button>
-      </div>
-      <div style="display: flex; flex-direction: column; gap: 8px; margin-top: 8px;">
-        <div style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 8px;">
-          Select a term table for <strong>${escapeHTML(course.code)} - ${escapeHTML(course.name)}</strong> (${course.units}u):
-        </div>
-        <div class="assign-terms-list" style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; max-height: 280px; overflow-y: auto; padding-right: 4px;">
-          ${availableTerms.map(t => `
-            <button class="btn btn-secondary term-select-option-btn" data-term-id="${t.id}" style="justify-content: flex-start; padding: 10px 12px; font-size: 0.82rem;">
-              <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
-              <span>${t.label}</span>
-            </button>
-          `).join('')}
-        </div>
-        <div style="display: flex; justify-content: flex-end; margin-top: 12px;">
-          <button type="button" class="btn btn-secondary" id="modalCancelBtn">Cancel</button>
-        </div>
-      </div>
-    </div>
-  `;
-
-  dom.editModal.classList.add('active');
-
-  document.getElementById('modalCloseBtn').addEventListener('click', closeEditModal);
-  document.getElementById('modalCancelBtn').addEventListener('click', closeEditModal);
-
-  const termBtns = dom.editModal.querySelectorAll('.term-select-option-btn');
-  termBtns.forEach(btn => {
-    btn.addEventListener('click', () => {
-      const termId = btn.dataset.termId;
-      if (termId) {
-        addCourseToTerm(termId, course.id);
-        closeEditModal();
-        showToast(`Assigned ${course.code} to ${formatTermName(termId)}`);
-      }
-    });
-  });
-}
-
 // Course State Mutation Methods
+function getOrderedTermIds() {
+  return Object.keys(state.curriculum).sort((a, b) => {
+    const matchA = a.match(/y(\d+)-t(\d+)/i);
+    const matchB = b.match(/y(\d+)-t(\d+)/i);
+    if (matchA && matchB) {
+      const yA = parseInt(matchA[1], 10);
+      const tA = parseInt(matchA[2], 10);
+      const yB = parseInt(matchB[1], 10);
+      const tB = parseInt(matchB[2], 10);
+      if (yA !== yB) return yA - yB;
+      return tA - tB;
+    }
+    return a.localeCompare(b);
+  });
+}
+
+function moveCourseUp(courseId, currentTermId) {
+  const termList = state.curriculum[currentTermId];
+  if (!termList) return;
+
+  const idx = termList.indexOf(courseId);
+  if (idx > 0) {
+    // Swap with course above in same term table
+    const temp = termList[idx];
+    termList[idx] = termList[idx - 1];
+    termList[idx - 1] = temp;
+    saveState();
+    render();
+    jumpToAssignedCourse(courseId, currentTermId);
+  } else if (idx === 0) {
+    // At top of term table: move to previous term's last position
+    const orderedTerms = getOrderedTermIds();
+    const termIdx = orderedTerms.indexOf(currentTermId);
+    if (termIdx > 0) {
+      const prevTermId = orderedTerms[termIdx - 1];
+      if (!state.curriculum[prevTermId]) state.curriculum[prevTermId] = [];
+      // Remove from current term
+      state.curriculum[currentTermId].splice(0, 1);
+      // Append to previous term
+      state.curriculum[prevTermId].push(courseId);
+      saveState();
+      render();
+      showToast(`Moved to ${formatShortTermName(prevTermId)}`);
+      jumpToAssignedCourse(courseId, prevTermId);
+    }
+  }
+}
+
+function moveCourseDown(courseId, currentTermId) {
+  const termList = state.curriculum[currentTermId];
+  if (!termList) return;
+
+  const idx = termList.indexOf(courseId);
+  if (idx >= 0 && idx < termList.length - 1) {
+    // Swap with course below in same term table
+    const temp = termList[idx];
+    termList[idx] = termList[idx + 1];
+    termList[idx + 1] = temp;
+    saveState();
+    render();
+    jumpToAssignedCourse(courseId, currentTermId);
+  } else if (idx === termList.length - 1) {
+    // At bottom of term table: move to next term's index 0
+    const orderedTerms = getOrderedTermIds();
+    const termIdx = orderedTerms.indexOf(currentTermId);
+    if (termIdx >= 0 && termIdx < orderedTerms.length - 1) {
+      const nextTermId = orderedTerms[termIdx + 1];
+      if (!state.curriculum[nextTermId]) state.curriculum[nextTermId] = [];
+      // Remove from current term
+      state.curriculum[currentTermId].splice(idx, 1);
+      // Insert at index 0 of next term
+      state.curriculum[nextTermId].unshift(courseId);
+      saveState();
+      render();
+      showToast(`Moved to ${formatShortTermName(nextTermId)}`);
+      jumpToAssignedCourse(courseId, nextTermId);
+    }
+  }
+}
+
 function moveCourseToPosition(fromTerm, courseId, targetTermId, insertIndex) {
   if (!state.curriculum[targetTermId]) {
     state.curriculum[targetTermId] = [];
@@ -1934,6 +1894,115 @@ function openEditModal(course) {
 
 function closeEditModal() {
   dom.editModal.classList.remove('active');
+}
+
+// Assign Course Modal Logic
+function openAssignCourseModal(course) {
+  const assignedTermId = Object.keys(state.curriculum).find(t => (state.curriculum[t] || []).includes(course.id));
+  const isAssigned = !!assignedTermId;
+
+  let currentYear = 1;
+  let currentTerm = 1;
+  if (assignedTermId) {
+    const match = assignedTermId.match(/y(\d+)-t(\d+)/i);
+    if (match) {
+      currentYear = parseInt(match[1], 10);
+      currentTerm = parseInt(match[2], 10);
+    }
+  }
+
+  dom.editModal.innerHTML = `
+    <div class="modal-card">
+      <div class="modal-header">
+        <div class="modal-title">${isAssigned ? 'Reassign Course' : 'Assign Course to Term'}</div>
+        <button class="close-modal-btn" id="modalCloseBtn">&times;</button>
+      </div>
+      
+      <div class="assign-course-preview-box">
+        <div class="assign-course-preview-code">
+          <span class="card-color-indicator" style="background-color: ${course.color}; width: 14px; height: 14px;"></span>
+          <span>${escapeHTML(course.code)}</span>
+        </div>
+        <div class="assign-course-preview-name">${escapeHTML(course.name)} (${course.units} units)</div>
+        <div class="assign-course-preview-status">
+          ${isAssigned 
+            ? `Status: <span style="color: var(--accent-emerald); font-weight: 700;">Assigned to Year ${currentYear}, Term ${currentTerm} (${formatShortTermName(assignedTermId)})</span>` 
+            : `Status: <span style="color: var(--text-muted); font-style: italic;">Currently Unassigned</span>`}
+        </div>
+      </div>
+
+      <form id="modalAssignForm" style="display: flex; flex-direction: column; gap: 14px;">
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">Target Year</label>
+            <select id="assignYearSelect" class="form-input" required>
+              <option value="1" ${currentYear === 1 ? 'selected' : ''}>Year 1</option>
+              <option value="2" ${currentYear === 2 ? 'selected' : ''}>Year 2</option>
+              <option value="3" ${currentYear === 3 ? 'selected' : ''}>Year 3</option>
+              <option value="4" ${currentYear === 4 ? 'selected' : ''}>Year 4</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Target Term</label>
+            <select id="assignTermSelect" class="form-input" required>
+              <option value="1" ${currentTerm === 1 ? 'selected' : ''}>Term 1</option>
+              <option value="2" ${currentTerm === 2 ? 'selected' : ''}>Term 2</option>
+              <option value="3" ${currentTerm === 3 ? 'selected' : ''}>Term 3</option>
+              <option value="4" ${currentTerm === 4 ? 'selected' : ''}>Term 4</option>
+            </select>
+          </div>
+        </div>
+
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 6px;">
+          ${isAssigned ? `<button type="button" class="btn btn-secondary" id="modalUnassignBtn" style="color: var(--accent-rose); border-color: rgba(214, 40, 40, 0.4);">Unassign</button>` : `<div></div>`}
+          <div style="display: flex; gap: 8px;">
+            <button type="button" class="btn btn-secondary" id="modalCancelBtn">Cancel</button>
+            <button type="submit" class="btn btn-primary">Assign Course</button>
+          </div>
+        </div>
+      </form>
+    </div>
+  `;
+
+  dom.editModal.classList.add('active');
+
+  const yearSelect = document.getElementById('assignYearSelect');
+  const termSelect = document.getElementById('assignTermSelect');
+  const modalCloseBtn = document.getElementById('modalCloseBtn');
+  const modalCancelBtn = document.getElementById('modalCancelBtn');
+  const modalUnassignBtn = document.getElementById('modalUnassignBtn');
+  const form = document.getElementById('modalAssignForm');
+
+  function updatePreview() {
+    const y = yearSelect.value;
+    const t = termSelect.value;
+    targetPreview.textContent = `Year ${y} - Term ${t} (Y${y}T${t})`;
+  }
+
+  yearSelect.addEventListener('change', updatePreview);
+  termSelect.addEventListener('change', updatePreview);
+
+  modalCloseBtn.addEventListener('click', closeEditModal);
+  modalCancelBtn.addEventListener('click', closeEditModal);
+
+  if (modalUnassignBtn) {
+    modalUnassignBtn.addEventListener('click', () => {
+      if (assignedTermId) {
+        removeCourseFromTerm(assignedTermId, course.id);
+        closeEditModal();
+        showToast(`Unassigned ${course.code} from curriculum`);
+      }
+    });
+  }
+
+  form.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const targetTermId = `y${yearSelect.value}-t${termSelect.value}`;
+    addCourseToTerm(targetTermId, course.id);
+    closeEditModal();
+    showToast(`Assigned ${course.code} to Year ${yearSelect.value}, Term ${termSelect.value}`);
+    jumpToAssignedCourse(course.id, targetTermId);
+  });
 }
 
 // Add New Course Modal (Triggered by + bubble button beside search bar)
