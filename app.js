@@ -290,6 +290,10 @@ function bindEvents() {
   // Filter Menu Select Changes
   dom.repoStatusFilterSelect.addEventListener('change', (e) => {
     state.statusFilter = e.target.value;
+    if (state.statusFilter === 'finished' && state.bankFilter === 'unassigned') {
+      state.bankFilter = 'all';
+      updateBankFilterTabsUI();
+    }
     updateRepoFilterIndicator();
     renderBankCards();
   });
@@ -297,6 +301,10 @@ function bindEvents() {
   if (dom.repoUnitsFilterSelect) {
     dom.repoUnitsFilterSelect.addEventListener('change', (e) => {
       state.unitsFilter = e.target.value;
+      if (state.unitsFilter !== 'all' && state.bankFilter === 'unassigned') {
+        state.bankFilter = 'all';
+        updateBankFilterTabsUI();
+      }
       updateRepoFilterIndicator();
       renderBankCards();
     });
@@ -1322,8 +1330,9 @@ function renderRepoUnitsFilterOptions() {
 
   const uniqueUnits = new Set();
   (state.courses || []).forEach(c => {
-    if (c.units !== undefined && c.units !== null) {
-      uniqueUnits.add(Number(c.units));
+    if (c.units !== undefined && c.units !== null && !isNaN(c.units)) {
+      const rounded = Math.round(Number(c.units) * 10) / 10;
+      uniqueUnits.add(rounded);
     }
   });
 
@@ -1342,7 +1351,7 @@ function renderRepoUnitsFilterOptions() {
     const opt5 = document.createElement('option');
     opt5.value = '5+';
     opt5.textContent = '5+ Units';
-    if (currentVal === '5+') opt5.selected = true;
+    if (currentVal === '5+' || currentVal === '5') opt5.selected = true;
     select.appendChild(opt5);
   }
 
@@ -1409,7 +1418,12 @@ function renderBankCards() {
   let filteredCourses = state.courses;
 
   // 1. Repository Nav Tab Filter
-  if (state.bankFilter === 'unassigned') {
+  const hasActiveUnitsFilter = state.unitsFilter && state.unitsFilter !== 'all';
+  const hasActiveStatusFilter = state.statusFilter && state.statusFilter !== 'all';
+
+  if ((hasActiveUnitsFilter || state.statusFilter === 'finished') && state.bankFilter === 'unassigned') {
+    // When specific units or finished status is selected, bypass 'unassigned' tab restriction
+  } else if (state.bankFilter === 'unassigned') {
     filteredCourses = filteredCourses.filter(c => !assignedMap.has(c.id));
   } else if (state.bankFilter === 'assigned') {
     filteredCourses = filteredCourses.filter(c => assignedMap.has(c.id));
@@ -1419,12 +1433,12 @@ function renderBankCards() {
   if (state.statusFilter === 'finished') {
     filteredCourses = filteredCourses.filter(c => {
       const tId = assignedMap.get(c.id);
-      return tId && state.termStatuses[tId] === 'accomplished';
+      return Boolean(tId && (state.termStatuses[tId] === 'accomplished' || state.termStatuses[tId] === 'finished'));
     });
   } else if (state.statusFilter === 'unfinished') {
     filteredCourses = filteredCourses.filter(c => {
       const tId = assignedMap.get(c.id);
-      return !tId || state.termStatuses[tId] !== 'accomplished';
+      return !tId || (state.termStatuses[tId] !== 'accomplished' && state.termStatuses[tId] !== 'finished');
     });
   }
 
@@ -1434,13 +1448,15 @@ function renderBankCards() {
     filteredCourses = filteredCourses.filter(c => (c.color || '').toLowerCase() === targetColor);
   }
 
-  // 3.5 Units Filter
+  // 4. Units Filter
   if (state.unitsFilter && state.unitsFilter !== 'all') {
-    if (state.unitsFilter === '5+') {
+    if (state.unitsFilter === '5+' || state.unitsFilter === '5') {
       filteredCourses = filteredCourses.filter(c => Number(c.units) >= 5);
     } else {
-      const uVal = Number(state.unitsFilter);
-      filteredCourses = filteredCourses.filter(c => Number(c.units) === uVal);
+      const targetUnits = parseFloat(state.unitsFilter);
+      if (!isNaN(targetUnits)) {
+        filteredCourses = filteredCourses.filter(c => Math.abs(Number(c.units) - targetUnits) < 0.05);
+      }
     }
   }
 
