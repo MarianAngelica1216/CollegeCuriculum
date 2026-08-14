@@ -968,6 +968,9 @@ function renderTermCard(year, term, conflicts, options) {
           <button class="action-btn-sm edit-term-course-btn" title="Edit course details" data-course-id="${course.id}">
             <svg width="13" height="13" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path></svg>
           </button>
+          <button class="action-btn-sm move-term-course-btn" title="Move course to another term" data-course-id="${course.id}">
+            <svg width="13" height="13" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12M8 12h12M8 17h12M4 7h.01M4 12h.01M4 17h.01"></path></svg>
+          </button>
           <button class="action-btn-sm remove-course-btn" title="Remove from term" data-course-id="${course.id}" data-term-id="${termId}">
             <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
           </button>
@@ -990,6 +993,15 @@ function renderTermCard(year, term, conflicts, options) {
           editTermBtn.addEventListener('click', (e) => {
             e.stopPropagation();
             openEditModal(course);
+          });
+        }
+
+        // Move course to another term button (1-tap selection on mobile)
+        const moveTermBtn = tr.querySelector('.move-term-course-btn');
+        if (moveTermBtn) {
+          moveTermBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            openAssignTermModal(course);
           });
         }
 
@@ -1254,7 +1266,7 @@ function renderBankCards() {
           <div class="card-code">${escapeHTML(course.code)}</div>
         </div>
         <div class="card-right">
-          ${isAssigned ? `<span class="assigned-term-tag" title="Click to view course in table">${formatShortTermName(assignedTermId)}</span>` : `<span class="card-units-badge">${course.units}u</span>`}
+          ${isAssigned ? `<span class="assigned-term-tag" title="Click to view course in table">${formatShortTermName(assignedTermId)}</span>` : `<button class="btn btn-primary quick-assign-btn" style="padding: 2px 7px; font-size: 0.72rem; border-radius: var(--radius-xs);" data-course-id="${course.id}" title="Assign course to a term table">+ Assign</button><span class="card-units-badge">${course.units}u</span>`}
           <button class="card-expand-btn" data-course-id="${course.id}">
             ${isExpanded ? '▲' : '▼'}
           </button>
@@ -1288,6 +1300,15 @@ function renderBankCards() {
         courseId: course.id
       }));
       card.addEventListener('dragend', handleDragEnd);
+    }
+
+    // Quick Assign button on card header
+    const quickAssignBtn = card.querySelector('.quick-assign-btn');
+    if (quickAssignBtn) {
+      quickAssignBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        openAssignTermModal(course);
+      });
     }
 
     // Expand/Collapse toggle
@@ -1363,31 +1384,30 @@ function handleDropOnTerm(e, targetTermId) {
   draggedData = null;
 }
 
-// Touch Drag & Drop Adapter for Android and Touchscreen Devices
+// Pointer & Touch Drag Adapter supporting Edge Android, Huawei Browser, Chrome, Safari
 function initTouchDragAndDrop() {
   let touchDragActive = false;
   let touchStartPos = { x: 0, y: 0 };
   let touchDragData = null;
   let touchDragSourceEl = null;
   let dragCloneEl = null;
+  let activePointerId = null;
 
-  document.addEventListener('touchstart', (e) => {
-    if (e.touches.length !== 1) return;
-    const touch = e.touches[0];
+  function isControlElement(el) {
+    return !!el.closest('button, input, select, a, .native-color-picker, .card-expand-btn, .edit-course-btn, .delete-course-btn, .action-btn-sm, .delete-term-btn, .term-status-badge, .quick-assign-btn, .move-term-course-btn');
+  }
 
-    // Ignore interactive UI controls (buttons, inputs, select dropdowns, color pickers)
-    if (e.target.closest('button, input, select, a, .native-color-picker, .card-expand-btn, .edit-course-btn, .delete-course-btn, .action-btn-sm, .delete-term-btn, .term-status-badge')) {
-      return;
-    }
+  function handleStart(clientX, clientY, target, pointerId = null) {
+    if (isControlElement(target)) return;
 
-    const cardEl = e.target.closest('.course-card[draggable="true"], .course-card[data-type="bank-card"]');
-    const rowEl = e.target.closest('tr.course-row[draggable="true"], tr[data-type="term-row"]');
-
+    const cardEl = target.closest('.course-card[draggable="true"], .course-card[data-type="bank-card"]');
+    const rowEl = target.closest('tr.course-row[draggable="true"], tr[data-type="term-row"]');
     const draggableEl = cardEl || rowEl;
     if (!draggableEl) return;
 
-    touchStartPos = { x: touch.clientX, y: touch.clientY };
+    touchStartPos = { x: clientX, y: clientY };
     touchDragSourceEl = draggableEl;
+    activePointerId = pointerId;
 
     if (cardEl && !cardEl.classList.contains('assigned-card')) {
       touchDragData = {
@@ -1403,20 +1423,25 @@ function initTouchDragAndDrop() {
     } else {
       touchDragData = null;
     }
-  }, { passive: true });
+  }
 
-  document.addEventListener('touchmove', (e) => {
-    if (!touchDragSourceEl || !touchDragData || e.touches.length !== 1) return;
-    const touch = e.touches[0];
-    const dx = touch.clientX - touchStartPos.x;
-    const dy = touch.clientY - touchStartPos.y;
+  function handleMove(clientX, clientY, originalEvent) {
+    if (!touchDragSourceEl || !touchDragData) return;
+
+    const dx = clientX - touchStartPos.x;
+    const dy = clientY - touchStartPos.y;
     const dist = Math.hypot(dx, dy);
 
     if (!touchDragActive) {
-      if (dist > 8) {
+      if (dist > 7) {
         touchDragActive = true;
         draggedData = touchDragData;
         touchDragSourceEl.classList.add('dragging');
+
+        // Capture pointer to prevent Edge Android / Huawei gesture navigation from canceling drag
+        if (touchDragSourceEl.setPointerCapture && activePointerId !== null) {
+          try { touchDragSourceEl.setPointerCapture(activePointerId); } catch (err) {}
+        }
 
         // Create floating preview clone
         dragCloneEl = touchDragSourceEl.cloneNode(true);
@@ -1424,7 +1449,7 @@ function initTouchDragAndDrop() {
         dragCloneEl.style.position = 'fixed';
         dragCloneEl.style.pointerEvents = 'none';
         dragCloneEl.style.zIndex = '99999';
-        dragCloneEl.style.opacity = '0.9';
+        dragCloneEl.style.opacity = '0.92';
         dragCloneEl.style.width = Math.min(touchDragSourceEl.offsetWidth, 320) + 'px';
         dragCloneEl.style.transform = 'translate(-50%, -50%) scale(1.03)';
         dragCloneEl.style.boxShadow = '0 12px 28px rgba(0,0,0,0.5)';
@@ -1442,23 +1467,22 @@ function initTouchDragAndDrop() {
     }
 
     if (touchDragActive) {
-      if (e.cancelable) e.preventDefault();
+      if (originalEvent && originalEvent.cancelable) originalEvent.preventDefault();
 
-      // Update clone position
       if (dragCloneEl) {
-        dragCloneEl.style.left = touch.clientX + 'px';
-        dragCloneEl.style.top = touch.clientY + 'px';
+        dragCloneEl.style.left = clientX + 'px';
+        dragCloneEl.style.top = clientY + 'px';
       }
 
       // Auto-scroll window if finger is near top or bottom screen edge
-      if (touch.clientY < 90) {
+      if (clientY < 90) {
         window.scrollBy({ top: -14, behavior: 'instant' });
-      } else if (touch.clientY > window.innerHeight - 90) {
+      } else if (clientY > window.innerHeight - 90) {
         window.scrollBy({ top: 14, behavior: 'instant' });
       }
 
       // Highlight drop target under finger
-      const targetEl = document.elementFromPoint(touch.clientX, touch.clientY);
+      const targetEl = document.elementFromPoint(clientX, clientY);
       clearTouchHoverStates();
 
       if (targetEl) {
@@ -1468,7 +1492,7 @@ function initTouchDragAndDrop() {
 
         if (hoverRow && hoverRow !== touchDragSourceEl) {
           const rect = hoverRow.getBoundingClientRect();
-          const isUpperHalf = touch.clientY < (rect.top + rect.height / 2);
+          const isUpperHalf = clientY < (rect.top + rect.height / 2);
           hoverRow.classList.add(isUpperHalf ? 'drag-over-top' : 'drag-over-bottom');
         } else if (hoverTermCard) {
           hoverTermCard.classList.add('drag-over-active');
@@ -1478,9 +1502,54 @@ function initTouchDragAndDrop() {
         }
       }
     }
-  }, { passive: false });
+  }
+
+  function handleEnd(clientX, clientY) {
+    if (!touchDragActive || !touchDragData) {
+      cleanupTouchDrag();
+      return;
+    }
+
+    const targetEl = document.elementFromPoint(clientX, clientY);
+
+    if (targetEl) {
+      const hoverRow = targetEl.closest('tr.course-row');
+      const hoverTermCard = targetEl.closest('.term-card');
+      const hoverBank = targetEl.closest('.course-bank-sidebar, .bank-cards-container, .bank-panel');
+
+      if (hoverRow) {
+        const termId = hoverRow.dataset.fromTerm || hoverRow.closest('.term-table-body')?.dataset.termId;
+        if (termId) {
+          const rect = hoverRow.getBoundingClientRect();
+          const isUpperHalf = clientY < (rect.top + rect.height / 2);
+          const termList = state.curriculum[termId] || [];
+          let targetIdx = termList.indexOf(hoverRow.dataset.courseId);
+          if (targetIdx === -1) targetIdx = termList.length;
+          if (!isUpperHalf) targetIdx += 1;
+
+          moveCourseToPosition(touchDragData.fromTerm, touchDragData.courseId, termId, targetIdx);
+          showToast(`Moved course into term position`);
+        }
+      } else if (hoverTermCard) {
+        const termId = hoverTermCard.dataset.termId;
+        if (termId) {
+          addCourseToTerm(termId, touchDragData.courseId);
+          showToast(`Added course to ${formatTermName(termId)}`);
+        }
+      } else if (hoverBank && touchDragData.fromTerm) {
+        removeCourseFromTerm(touchDragData.fromTerm, touchDragData.courseId);
+        showToast(`Removed course back to repository`);
+      }
+    }
+
+    cleanupTouchDrag();
+    draggedData = null;
+  }
 
   function cleanupTouchDrag() {
+    if (touchDragSourceEl && touchDragSourceEl.releasePointerCapture && activePointerId !== null) {
+      try { touchDragSourceEl.releasePointerCapture(activePointerId); } catch (err) {}
+    }
     if (dragCloneEl) {
       dragCloneEl.remove();
       dragCloneEl = null;
@@ -1492,6 +1561,7 @@ function initTouchDragAndDrop() {
     clearTouchHoverStates();
     touchDragActive = false;
     touchDragData = null;
+    activePointerId = null;
   }
 
   function clearTouchHoverStates() {
@@ -1503,52 +1573,101 @@ function initTouchDragAndDrop() {
     });
   }
 
-  document.addEventListener('touchend', (e) => {
-    if (!touchDragActive || !touchDragData) {
-      cleanupTouchDrag();
-      return;
-    }
+  // Pointer Events (Edge Android, Huawei Browser, Chrome Mobile)
+  document.addEventListener('pointerdown', (e) => {
+    if (e.pointerType === 'mouse') return;
+    handleStart(e.clientX, e.clientY, e.target, e.pointerId);
+  }, { passive: true });
 
+  document.addEventListener('pointermove', (e) => {
+    if (e.pointerType === 'mouse') return;
+    handleMove(e.clientX, e.clientY, e);
+  }, { passive: false });
+
+  document.addEventListener('pointerup', (e) => {
+    if (e.pointerType === 'mouse') return;
+    handleEnd(e.clientX, e.clientY);
+  });
+
+  document.addEventListener('pointercancel', cleanupTouchDrag);
+
+  // Fallback Touch Events (Older browsers or unsupported pointer events)
+  document.addEventListener('touchstart', (e) => {
+    if (e.touches.length !== 1) return;
+    const touch = e.touches[0];
+    handleStart(touch.clientX, touch.clientY, e.target);
+  }, { passive: true });
+
+  document.addEventListener('touchmove', (e) => {
+    if (e.touches.length !== 1) return;
+    const touch = e.touches[0];
+    handleMove(touch.clientX, touch.clientY, e);
+  }, { passive: false });
+
+  document.addEventListener('touchend', (e) => {
     if (e.changedTouches.length > 0) {
       const touch = e.changedTouches[0];
-      const targetEl = document.elementFromPoint(touch.clientX, touch.clientY);
-
-      if (targetEl) {
-        const hoverRow = targetEl.closest('tr.course-row');
-        const hoverTermCard = targetEl.closest('.term-card');
-        const hoverBank = targetEl.closest('.course-bank-sidebar, .bank-cards-container, .bank-panel');
-
-        if (hoverRow) {
-          const termId = hoverRow.dataset.fromTerm || hoverRow.closest('.term-table-body')?.dataset.termId;
-          if (termId) {
-            const rect = hoverRow.getBoundingClientRect();
-            const isUpperHalf = touch.clientY < (rect.top + rect.height / 2);
-            const termList = state.curriculum[termId] || [];
-            let targetIdx = termList.indexOf(hoverRow.dataset.courseId);
-            if (targetIdx === -1) targetIdx = termList.length;
-            if (!isUpperHalf) targetIdx += 1;
-
-            moveCourseToPosition(touchDragData.fromTerm, touchDragData.courseId, termId, targetIdx);
-            showToast(`Moved course into term position`);
-          }
-        } else if (hoverTermCard) {
-          const termId = hoverTermCard.dataset.termId;
-          if (termId) {
-            addCourseToTerm(termId, touchDragData.courseId);
-            showToast(`Added course to ${formatTermName(termId)}`);
-          }
-        } else if (hoverBank && touchDragData.fromTerm) {
-          removeCourseFromTerm(touchDragData.fromTerm, touchDragData.courseId);
-          showToast(`Removed course back to repository`);
-        }
-      }
+      handleEnd(touch.clientX, touch.clientY);
     }
-
-    cleanupTouchDrag();
-    draggedData = null;
   });
 
   document.addEventListener('touchcancel', cleanupTouchDrag);
+}
+
+// 1-Tap Term Assignment Modal (For Edge Android, Huawei, and Mobile devices)
+function openAssignTermModal(course) {
+  const availableTerms = [];
+  YEARS.forEach(y => {
+    const termNums = getTermNumbersForYear(y, state.curriculum);
+    termNums.forEach(t => {
+      availableTerms.push({
+        id: `y${y}-t${t}`,
+        label: `Year ${y} - Term ${t}`
+      });
+    });
+  });
+
+  dom.editModal.innerHTML = `
+    <div class="modal-card">
+      <div class="modal-header">
+        <div class="modal-title">Assign ${escapeHTML(course.code)}</div>
+        <button class="close-modal-btn" id="modalCloseBtn">&times;</button>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 8px; margin-top: 8px;">
+        <div style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 8px;">
+          Select a term table for <strong>${escapeHTML(course.code)} - ${escapeHTML(course.name)}</strong> (${course.units}u):
+        </div>
+        <div class="assign-terms-list" style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; max-height: 280px; overflow-y: auto; padding-right: 4px;">
+          ${availableTerms.map(t => `
+            <button class="btn btn-secondary term-select-option-btn" data-term-id="${t.id}" style="justify-content: flex-start; padding: 10px 12px; font-size: 0.82rem;">
+              <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
+              <span>${t.label}</span>
+            </button>
+          `).join('')}
+        </div>
+        <div style="display: flex; justify-content: flex-end; margin-top: 12px;">
+          <button type="button" class="btn btn-secondary" id="modalCancelBtn">Cancel</button>
+        </div>
+      </div>
+    </div>
+  `;
+
+  dom.editModal.classList.add('active');
+
+  document.getElementById('modalCloseBtn').addEventListener('click', closeEditModal);
+  document.getElementById('modalCancelBtn').addEventListener('click', closeEditModal);
+
+  const termBtns = dom.editModal.querySelectorAll('.term-select-option-btn');
+  termBtns.forEach(btn => {
+    btn.addEventListener('click', () => {
+      const termId = btn.dataset.termId;
+      if (termId) {
+        addCourseToTerm(termId, course.id);
+        closeEditModal();
+        showToast(`Assigned ${course.code} to ${formatTermName(termId)}`);
+      }
+    });
+  });
 }
 
 // Course State Mutation Methods
