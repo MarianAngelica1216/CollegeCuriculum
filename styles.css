@@ -441,16 +441,31 @@ body {
   border-bottom-color: #111c33 !important;
 }
 
-[data-theme="light"] .term-title,
-[data-theme="light"] .year-section-title {
+[data-theme="light"] .term-title {
   color: #ffffff !important;
 }
 
-[data-theme="light"] .term-units-summary,
-[data-theme="light"] .year-units-badge {
+[data-theme="light"] .term-units-summary {
   background: rgba(255, 255, 255, 0.15) !important;
-  color: #ffc09f !important;
+  color: #ffffff !important;
   border: 1px solid rgba(255, 255, 255, 0.25) !important;
+}
+
+/* Light Mode Year Section Header (Transparent background requires dark text) */
+[data-theme="light"] .year-section-header {
+  border-bottom: 2px solid #800020 !important;
+}
+
+[data-theme="light"] .year-section-title {
+  color: #1b2a4a !important;
+  font-weight: 800;
+}
+
+[data-theme="light"] .year-units-badge {
+  background: #ffffff !important;
+  color: #1b2a4a !important;
+  border: 1px solid #ebe0d0 !important;
+  font-weight: 700;
 }
 
 .term-title {
@@ -1531,6 +1546,74 @@ tr.course-row.drag-over-bottom {
 .compare-year-header {
   margin-top: 16px;
   margin-bottom: 4px;
+}
+
+/* Dynamic Term Add & Delete Buttons */
+.add-term-btn {
+  background: var(--bg-secondary);
+  border: 1px solid var(--panel-border);
+  color: var(--text-main);
+  font-size: 0.75rem;
+  font-weight: 700;
+  padding: 4px 10px;
+  border-radius: var(--radius-xs);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  transition: all var(--transition-fast);
+  box-shadow: var(--shadow-sm);
+}
+
+.add-term-btn:hover {
+  background: var(--table-header-bg);
+  border-color: var(--accent-primary);
+  color: var(--accent-warm);
+}
+
+[data-theme="light"] .add-term-btn:hover {
+  background: rgba(128, 0, 32, 0.08);
+  border-color: #800020;
+  color: #800020;
+}
+
+.term-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.delete-term-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  padding: 3px 5px;
+  border-radius: var(--radius-xs);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: all var(--transition-fast);
+}
+
+.delete-term-btn:hover {
+  color: var(--accent-rose);
+  background: rgba(239, 68, 68, 0.15);
+}
+
+.placeholder-term-card {
+  border: 1px dashed var(--panel-border);
+  border-radius: var(--radius-md);
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  color: var(--text-muted);
+  font-size: 0.82rem;
+  background: rgba(0, 0, 0, 0.05);
+  min-height: 120px;
 }
 
 /* Compare Mode Specific Table Customizations */

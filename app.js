@@ -277,6 +277,19 @@ function bindEvents() {
     }
   });
 
+  // Handle + Add Term button clicks
+  if (dom.curriculumContainer) {
+    dom.curriculumContainer.addEventListener('click', (e) => {
+      const btn = e.target.closest('.add-term-btn');
+      if (btn) {
+        const year = parseInt(btn.dataset.year, 10);
+        if (year) {
+          addTermToYear(year);
+        }
+      }
+    });
+  }
+
   // Sidebar Container Dropzone (Dropping a term row into sidebar removes it from the term)
   dom.bankCardsContainer.addEventListener('dragover', (e) => {
     e.preventDefault();
@@ -510,6 +523,56 @@ function renderHeaderStats() {
   }
 }
 
+// Helper to get array of term numbers for a specific year (e.g. [1, 2, 3, 4, 5])
+function getTermNumbersForYear(yearNum, planObj = state.curriculum) {
+  const prefix = `y${yearNum}-t`;
+  const keys = Object.keys(planObj || {}).filter(k => k.startsWith(prefix));
+  const nums = keys.map(k => {
+    const match = k.match(/y\d+-t(\d+)/);
+    return match ? parseInt(match[1], 10) : null;
+  }).filter(Boolean);
+  nums.sort((a, b) => a - b);
+  return nums;
+}
+
+// Add a new term table to a specific year
+function addTermToYear(yearNum) {
+  const existingNums = getTermNumbersForYear(yearNum, state.curriculum);
+  const maxNum = existingNums.length > 0 ? Math.max(...existingNums) : 0;
+  const newTermNum = maxNum + 1;
+  const newTermId = `y${yearNum}-t${newTermNum}`;
+
+  state.curriculum[newTermId] = [];
+  state.termStatuses[newTermId] = 'upcoming';
+  saveState();
+  render();
+  showToast(`Added Term ${newTermNum} to Year ${yearNum}`);
+}
+
+// Delete a term table from a year
+function deleteTermTable(termId) {
+  const match = termId.match(/y(\d+)-t(\d+)/);
+  if (!match) return;
+  const yearNum = match[1];
+  const termNum = match[2];
+
+  const assignedCourses = state.curriculum[termId] || [];
+  const courseCount = assignedCourses.length;
+
+  let confirmMsg = `Delete Term ${termNum} from Year ${yearNum}?`;
+  if (courseCount > 0) {
+    confirmMsg = `Delete Term ${termNum} from Year ${yearNum}? ${courseCount} assigned course(s) will be returned to the course repository.`;
+  }
+
+  if (confirm(confirmMsg)) {
+    delete state.curriculum[termId];
+    delete state.termStatuses[termId];
+    saveState();
+    render();
+    showToast(`Deleted Term ${termNum} from Year ${yearNum}`);
+  }
+}
+
 // Render Main Curriculum Grid
 function renderCurriculumGrid() {
   const container = dom.curriculumContainer;
@@ -531,13 +594,13 @@ function renderCurriculumGrid() {
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 14l9-5-9-5-9 5 9 5z"></path>
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 14l6.16-3.422a12.083 12.083 0 01.665 6.479A11.952 11.952 0 0112 20.055a11.952 11.952 0 01-6.824-2.998 12.078 12.078 0 01.665-6.479L12 14z"></path>
         </svg>
-        School Curriculum <span class="compare-tag school-tag">Recommended</span>
+        School Curriculum 
       </div>
       <div class="compare-column-title user-title">
         <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"></path>
         </svg>
-        My Organized Classes <span class="compare-tag user-tag">Your Plan</span>
+        My Organized Classes 
       </div>
     `;
     compareWrapper.appendChild(headerRow);
@@ -559,14 +622,21 @@ function renderCurriculumGrid() {
     const yearsToRender = state.activeYear === 'all' ? YEARS : [state.activeYear];
 
     yearsToRender.forEach(y => {
+      const schoolTermNums = getTermNumbersForYear(y, DEFAULT_CURRICULUM_PLAN);
+      const userTermNums = getTermNumbersForYear(y, state.curriculum);
+      const allTermNums = Array.from(new Set([...schoolTermNums, ...userTermNums])).sort((a, b) => a - b);
+
       if (state.activeYear === 'all') {
         let schoolYearUnits = 0;
         let userYearUnits = 0;
-        TERMS_PER_YEAR.forEach(t => {
+
+        schoolTermNums.forEach(t => {
           (DEFAULT_CURRICULUM_PLAN[`y${y}-t${t}`] || []).forEach(cId => {
             const c = DEFAULT_COURSES.find(item => item.id === cId);
             if (c) schoolYearUnits += c.units;
           });
+        });
+        userTermNums.forEach(t => {
           (state.curriculum[`y${y}-t${t}`] || []).forEach(cId => {
             const c = state.courses.find(item => item.id === cId);
             if (c) userYearUnits += c.units;
@@ -577,27 +647,44 @@ function renderCurriculumGrid() {
         yearHeader.className = 'year-section-header compare-year-header';
         yearHeader.innerHTML = `
           <div class="year-section-title">YEAR ${y}</div>
-          <div style="display:flex; gap:16px; align-items:center;">
+          <div style="display:flex; gap:12px; align-items:center;">
             <div class="year-units-badge" style="font-size:0.75rem;">School: ${schoolYearUnits.toFixed(1)}u</div>
             <div class="year-units-badge" style="font-size:0.75rem;">My Plan: ${userYearUnits.toFixed(1)}u</div>
+            <button class="add-term-btn" data-year="${y}" title="Add term table to Year ${y}">+ Add Term</button>
           </div>
         `;
         compareWrapper.appendChild(yearHeader);
       }
 
       // Render each term side-by-side in a paired row
-      TERMS_PER_YEAR.forEach(t => {
+      allTermNums.forEach(t => {
         const termRow = document.createElement('div');
         termRow.className = 'compare-term-row';
 
-        const schoolCard = renderTermCard(y, t, conflicts, schoolOptions);
-        schoolCard.classList.add('school-column');
+        if (schoolTermNums.includes(t)) {
+          const schoolCard = renderTermCard(y, t, conflicts, schoolOptions);
+          schoolCard.classList.add('school-column');
+          termRow.appendChild(schoolCard);
+        } else {
+          const emptySchool = document.createElement('div');
+          emptySchool.className = 'placeholder-term-card school-column';
+          emptySchool.innerHTML = `<span>No School Recommendation for Term ${t}</span>`;
+          termRow.appendChild(emptySchool);
+        }
 
-        const userCard = renderTermCard(y, t, conflicts, userOptions);
-        userCard.classList.add('user-column');
-
-        termRow.appendChild(schoolCard);
-        termRow.appendChild(userCard);
+        if (userTermNums.includes(t)) {
+          const userCard = renderTermCard(y, t, conflicts, userOptions);
+          userCard.classList.add('user-column');
+          termRow.appendChild(userCard);
+        } else {
+          const emptyUser = document.createElement('div');
+          emptyUser.className = 'placeholder-term-card user-column';
+          emptyUser.innerHTML = `
+            <span>Term ${t} not in your plan</span>
+            <button class="add-term-btn" data-year="${y}">+ Add Term ${t}</button>
+          `;
+          termRow.appendChild(emptyUser);
+        }
 
         compareWrapper.appendChild(termRow);
       });
@@ -616,10 +703,12 @@ function renderCurriculumGrid() {
 
     if (state.activeYear === 'all') {
       YEARS.forEach(y => {
+        const userTermNums = getTermNumbersForYear(y, state.curriculum);
         const yearSection = document.createElement('div');
         yearSection.className = 'year-section';
         let yearUnits = 0;
-        TERMS_PER_YEAR.forEach(t => {
+
+        userTermNums.forEach(t => {
           const tId = `y${y}-t${t}`;
           (state.curriculum[tId] || []).forEach(cId => {
             const c = state.courses.find(item => item.id === cId);
@@ -630,26 +719,59 @@ function renderCurriculumGrid() {
         yearSection.innerHTML = `
           <div class="year-section-header">
             <div class="year-section-title">YEAR ${y}</div>
-            <div class="year-units-badge">${yearUnits.toFixed(1)} Total Units</div>
+            <div style="display:flex; gap:12px; align-items:center;">
+              <div class="year-units-badge">${yearUnits.toFixed(1)} Total Units</div>
+              <button class="add-term-btn" data-year="${y}" title="Add a term table to Year ${y}">+ Add Term</button>
+            </div>
           </div>
           <div class="terms-grid grid-all" id="year-grid-${y}"></div>
         `;
         container.appendChild(yearSection);
 
         const gridEl = yearSection.querySelector(`#year-grid-${y}`);
-        TERMS_PER_YEAR.forEach(t => {
-          const termCard = renderTermCard(y, t, conflicts, userOptions);
-          gridEl.appendChild(termCard);
-        });
+        if (userTermNums.length === 0) {
+          gridEl.innerHTML = `
+            <div class="placeholder-term-card" style="grid-column: 1 / -1;">
+              <span>No terms in Year ${y}</span>
+              <button class="add-term-btn" data-year="${y}">+ Add First Term to Year ${y}</button>
+            </div>
+          `;
+        } else {
+          userTermNums.forEach(t => {
+            const termCard = renderTermCard(y, t, conflicts, userOptions);
+            gridEl.appendChild(termCard);
+          });
+        }
       });
     } else {
+      const yearNum = state.activeYear;
+      const userTermNums = getTermNumbersForYear(yearNum, state.curriculum);
+
+      const yearHeader = document.createElement('div');
+      yearHeader.className = 'year-section-header';
+      yearHeader.style.marginBottom = '16px';
+      yearHeader.innerHTML = `
+        <div class="year-section-title">YEAR ${yearNum}</div>
+        <button class="add-term-btn" data-year="${yearNum}">+ Add Term to Year ${yearNum}</button>
+      `;
+      container.appendChild(yearHeader);
+
       const yearGrid = document.createElement('div');
       yearGrid.className = 'terms-grid grid-4';
 
-      TERMS_PER_YEAR.forEach(t => {
-        const termCard = renderTermCard(state.activeYear, t, conflicts, userOptions);
-        yearGrid.appendChild(termCard);
-      });
+      if (userTermNums.length === 0) {
+        yearGrid.innerHTML = `
+          <div class="placeholder-term-card" style="grid-column: 1 / -1;">
+            <span>No terms configured in Year ${yearNum}</span>
+            <button class="add-term-btn" data-year="${yearNum}">+ Add Term to Year ${yearNum}</button>
+          </div>
+        `;
+      } else {
+        userTermNums.forEach(t => {
+          const termCard = renderTermCard(yearNum, t, conflicts, userOptions);
+          yearGrid.appendChild(termCard);
+        });
+      }
 
       container.appendChild(yearGrid);
     }
@@ -698,7 +820,16 @@ function renderTermCard(year, term, conflicts, options) {
       ? `<span class="read-only-badge">School Recommended</span>`
       : `<span class="term-status-badge ${currentStatus}" data-term-id="${termId}" title="Click to toggle term status">${statusLabel}</span>`}
       </div>
-      <div class="term-units-summary">${termUnits.toFixed(1)} Units</div>
+      <div class="term-header-actions">
+        <span class="term-units-summary">${termUnits.toFixed(1)} Units</span>
+        ${!isReadOnly ? `
+          <button class="delete-term-btn" data-term-id="${termId}" title="Delete Term ${term}">
+            <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>
+            </svg>
+          </button>
+        ` : ''}
+      </div>
     </div>
     <div class="table-wrapper">
       <table class="curriculum-table">
@@ -733,6 +864,14 @@ function renderTermCard(year, term, conflicts, options) {
         saveState();
         render();
         showToast(`${formatTermName(termId)} marked as ${nextStatus.toUpperCase()}`);
+      });
+    }
+
+    const deleteBtn = card.querySelector('.delete-term-btn');
+    if (deleteBtn) {
+      deleteBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        deleteTermTable(termId);
       });
     }
   }
