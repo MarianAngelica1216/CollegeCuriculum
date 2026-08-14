@@ -1950,6 +1950,8 @@ tr.course-row.drag-over-bottom {
   touch-action: none !important;
 }
 
-.course-card, tr.course-row {
-  touch-action: manipulation;
+.course-card[draggable="true"], tr.course-row[draggable="true"], .course-card[data-type="bank-card"], tr.course-row[data-type="term-row"] {
+  touch-action: none !important;
+  -webkit-user-drag: none !important;
+  user-select: none;
 }

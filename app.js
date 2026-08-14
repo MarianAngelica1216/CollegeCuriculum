@@ -1422,6 +1422,12 @@ function initTouchDragAndDrop() {
       };
     } else {
       touchDragData = null;
+      return;
+    }
+
+    // Capture pointer immediately on touch start so Edge Android / Huawei gesture navigation cannot steal/cancel drag
+    if (pointerId !== null && draggableEl.setPointerCapture) {
+      try { draggableEl.setPointerCapture(pointerId); } catch (err) {}
     }
   }
 
@@ -1433,15 +1439,10 @@ function initTouchDragAndDrop() {
     const dist = Math.hypot(dx, dy);
 
     if (!touchDragActive) {
-      if (dist > 7) {
+      if (dist > 6) {
         touchDragActive = true;
         draggedData = touchDragData;
         touchDragSourceEl.classList.add('dragging');
-
-        // Capture pointer to prevent Edge Android / Huawei gesture navigation from canceling drag
-        if (touchDragSourceEl.setPointerCapture && activePointerId !== null) {
-          try { touchDragSourceEl.setPointerCapture(activePointerId); } catch (err) {}
-        }
 
         // Create floating preview clone
         dragCloneEl = touchDragSourceEl.cloneNode(true);
@@ -1573,45 +1574,49 @@ function initTouchDragAndDrop() {
     });
   }
 
-  // Pointer Events (Edge Android, Huawei Browser, Chrome Mobile)
-  document.addEventListener('pointerdown', (e) => {
-    if (e.pointerType === 'mouse') return;
-    handleStart(e.clientX, e.clientY, e.target, e.pointerId);
-  }, { passive: true });
+  const hasPointerEvents = 'PointerEvent' in window;
 
-  document.addEventListener('pointermove', (e) => {
-    if (e.pointerType === 'mouse') return;
-    handleMove(e.clientX, e.clientY, e);
-  }, { passive: false });
+  if (hasPointerEvents) {
+    // Pointer Events (Edge Android, Huawei Browser, Chrome Mobile, Safari)
+    document.addEventListener('pointerdown', (e) => {
+      if (e.pointerType === 'mouse') return;
+      handleStart(e.clientX, e.clientY, e.target, e.pointerId);
+    }, { passive: true });
 
-  document.addEventListener('pointerup', (e) => {
-    if (e.pointerType === 'mouse') return;
-    handleEnd(e.clientX, e.clientY);
-  });
+    document.addEventListener('pointermove', (e) => {
+      if (e.pointerType === 'mouse') return;
+      handleMove(e.clientX, e.clientY, e);
+    }, { passive: false });
 
-  document.addEventListener('pointercancel', cleanupTouchDrag);
+    document.addEventListener('pointerup', (e) => {
+      if (e.pointerType === 'mouse') return;
+      handleEnd(e.clientX, e.clientY);
+    });
 
-  // Fallback Touch Events (Older browsers or unsupported pointer events)
-  document.addEventListener('touchstart', (e) => {
-    if (e.touches.length !== 1) return;
-    const touch = e.touches[0];
-    handleStart(touch.clientX, touch.clientY, e.target);
-  }, { passive: true });
+    document.addEventListener('pointercancel', cleanupTouchDrag);
+  } else {
+    // Fallback Touch Events (Legacy mobile browsers)
+    document.addEventListener('touchstart', (e) => {
+      if (e.touches.length !== 1) return;
+      const touch = e.touches[0];
+      handleStart(touch.clientX, touch.clientY, e.target);
+    }, { passive: true });
 
-  document.addEventListener('touchmove', (e) => {
-    if (e.touches.length !== 1) return;
-    const touch = e.touches[0];
-    handleMove(touch.clientX, touch.clientY, e);
-  }, { passive: false });
+    document.addEventListener('touchmove', (e) => {
+      if (e.touches.length !== 1) return;
+      const touch = e.touches[0];
+      handleMove(touch.clientX, touch.clientY, e);
+    }, { passive: false });
 
-  document.addEventListener('touchend', (e) => {
-    if (e.changedTouches.length > 0) {
-      const touch = e.changedTouches[0];
-      handleEnd(touch.clientX, touch.clientY);
-    }
-  });
+    document.addEventListener('touchend', (e) => {
+      if (e.changedTouches.length > 0) {
+        const touch = e.changedTouches[0];
+        handleEnd(touch.clientX, touch.clientY);
+      }
+    });
 
-  document.addEventListener('touchcancel', cleanupTouchDrag);
+    document.addEventListener('touchcancel', cleanupTouchDrag);
+  }
 }
 
 // 1-Tap Term Assignment Modal (For Edge Android, Huawei, and Mobile devices)
