@@ -173,7 +173,10 @@ function bindEvents() {
     document.querySelectorAll('.row-actions-slide-panel').forEach(p => {
       p.classList.add('hidden');
       const parentTr = p.closest('tr');
-      if (parentTr) parentTr.style.zIndex = '';
+      if (parentTr) {
+        parentTr.style.position = '';
+        parentTr.style.zIndex = '';
+      }
     });
   });
 
@@ -1111,11 +1114,15 @@ function renderTermCard(year, term, conflicts, options) {
               if (p !== slidePanel) {
                 p.classList.add('hidden');
                 const parentTr = p.closest('tr');
-                if (parentTr) parentTr.style.zIndex = '';
+                if (parentTr) {
+                  parentTr.style.position = '';
+                  parentTr.style.zIndex = '';
+                }
               }
             });
             const isOpen = slidePanel.classList.toggle('hidden') === false;
-            tr.style.zIndex = isOpen ? '990' : '';
+            tr.style.position = isOpen ? 'relative' : '';
+            tr.style.zIndex = isOpen ? '200' : '';
           });
         }
 

@@ -129,7 +129,7 @@ body {
 .app-header {
   position: sticky;
   top: 0;
-  z-index: 100;
+  z-index: 1200;
   background: var(--panel-bg);
   border-bottom: 2px solid var(--panel-border);
   padding: 12px 24px;
@@ -479,7 +479,7 @@ body {
   background: var(--panel-bg);
   border: 1px solid var(--panel-border);
   border-radius: var(--radius-md);
-  overflow: hidden;
+  overflow: visible;
   box-shadow: var(--shadow-sm);
   display: flex;
   flex-direction: column;
@@ -495,6 +495,7 @@ body {
   padding: 12px 16px;
   background: var(--table-header-bg);
   border-bottom: 1px solid var(--panel-border);
+  border-radius: var(--radius-md) var(--radius-md) 0 0;
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -559,7 +560,7 @@ body {
 
 /* 5-Column Table & Course Row Typography */
 .table-wrapper {
-  overflow-x: hidden;
+  overflow: visible;
   flex: 1;
   min-height: 100px;
 }
@@ -587,6 +588,7 @@ body {
   padding: 10px 12px;
   border-bottom: 1px solid var(--panel-border);
   vertical-align: middle;
+  position: relative;
 }
 
 .curriculum-table tr:last-child td {
@@ -705,6 +707,8 @@ body {
   color: var(--text-secondary);
   font-family: 'Outfit', sans-serif !important;
   font-size: 0.8rem;
+  position: relative;
+  z-index: 1;
 }
 
 .prereq-tag {
@@ -736,10 +740,10 @@ body {
 .col-actions {
   width: 48px;
   text-align: center;
-  position: relative;
+  position: relative !important;
   white-space: nowrap;
   overflow: visible !important;
-  z-index: 15;
+  z-index: 50 !important;
 }
 
 /* On Small Screens */
@@ -749,9 +753,9 @@ body {
   }
 
   .curriculum-table th,
-  .curriculum-table td:not(.col-actions) {
+  .curriculum-table td {
     padding: 8px 6px;
-    overflow: hidden;
+    overflow: visible;
   }
 
   .col-code {
@@ -764,23 +768,26 @@ body {
 
   .col-prereqs {
     width: 100px;
-    overflow: hidden;
+    position: relative;
+    z-index: 1;
+    overflow: visible;
   }
 
   .col-actions {
     width: 44px;
+    position: relative !important;
     overflow: visible !important;
-    z-index: 15;
+    z-index: 50 !important;
   }
 }
 
 .row-actions-wrapper {
-  position: relative;
+  position: relative !important;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   overflow: visible !important;
-  z-index: 25;
+  z-index: 75 !important;
 }
 
 /* Inline Sliding Action Bar that expands horizontally on the table row */
@@ -796,8 +803,8 @@ body {
   border: 1px solid var(--panel-border);
   border-radius: var(--radius-sm);
   padding: 3px 6px;
-  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.45);
-  z-index: 9999 !important;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.15);
+  z-index: 300 !important;
   white-space: nowrap;
   overflow: visible !important;
   animation: slideActionsInline 0.22s cubic-bezier(0.4, 0, 0.2, 1);
@@ -808,6 +815,7 @@ body {
     opacity: 0;
     transform: translateY(-50%) translateX(24px);
   }
+
   to {
     opacity: 1;
     transform: translateY(-50%) translateX(0);
@@ -1930,7 +1938,7 @@ tr.course-row.drag-over-bottom {
   display: none !important;
 }
 
-.main-layout.compare-mode-active ~ .bank-floating-bubble-btn {
+.main-layout.compare-mode-active~.bank-floating-bubble-btn {
   display: none !important;
 }
 
@@ -1952,6 +1960,7 @@ tr.course-row.drag-over-bottom {
     opacity: 0;
     transform: translateX(65px);
   }
+
   100% {
     opacity: 1;
     transform: translateX(0);
@@ -1967,6 +1976,7 @@ tr.course-row.drag-over-bottom {
     opacity: 0;
     transform: translateX(-65px);
   }
+
   100% {
     opacity: 1;
     transform: translateX(0);
