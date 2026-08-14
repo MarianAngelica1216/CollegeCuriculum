@@ -170,7 +170,11 @@ function bindEvents() {
 
   // Close row action slide panels on outside click
   document.addEventListener('click', () => {
-    document.querySelectorAll('.row-actions-slide-panel').forEach(p => p.classList.add('hidden'));
+    document.querySelectorAll('.row-actions-slide-panel').forEach(p => {
+      p.classList.add('hidden');
+      const parentTr = p.closest('tr');
+      if (parentTr) parentTr.style.zIndex = '';
+    });
   });
 
   // Theme Toggle
@@ -1104,9 +1108,14 @@ function renderTermCard(year, term, conflicts, options) {
           menuToggleBtn.addEventListener('click', (e) => {
             e.stopPropagation();
             document.querySelectorAll('.row-actions-slide-panel').forEach(p => {
-              if (p !== slidePanel) p.classList.add('hidden');
+              if (p !== slidePanel) {
+                p.classList.add('hidden');
+                const parentTr = p.closest('tr');
+                if (parentTr) parentTr.style.zIndex = '';
+              }
             });
-            slidePanel.classList.toggle('hidden');
+            const isOpen = slidePanel.classList.toggle('hidden') === false;
+            tr.style.zIndex = isOpen ? '990' : '';
           });
         }
 

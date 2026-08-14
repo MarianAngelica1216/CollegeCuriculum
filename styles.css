@@ -738,6 +738,8 @@ body {
   text-align: center;
   position: relative;
   white-space: nowrap;
+  overflow: visible !important;
+  z-index: 15;
 }
 
 /* On Small Screens */
@@ -747,7 +749,7 @@ body {
   }
 
   .curriculum-table th,
-  .curriculum-table td {
+  .curriculum-table td:not(.col-actions) {
     padding: 8px 6px;
     overflow: hidden;
   }
@@ -767,6 +769,8 @@ body {
 
   .col-actions {
     width: 44px;
+    overflow: visible !important;
+    z-index: 15;
   }
 }
 
@@ -775,6 +779,8 @@ body {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  overflow: visible !important;
+  z-index: 25;
 }
 
 /* Inline Sliding Action Bar that expands horizontally on the table row */
@@ -790,9 +796,10 @@ body {
   border: 1px solid var(--panel-border);
   border-radius: var(--radius-sm);
   padding: 3px 6px;
-  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.35);
-  z-index: 600;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.45);
+  z-index: 9999 !important;
   white-space: nowrap;
+  overflow: visible !important;
   animation: slideActionsInline 0.22s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
