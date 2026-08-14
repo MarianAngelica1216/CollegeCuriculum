@@ -40,6 +40,7 @@ document.addEventListener('DOMContentLoaded', () => {
   cacheDOM();
   loadState();
   bindEvents();
+  initTouchDragAndDrop();
   render();
 });
 
@@ -1360,6 +1361,194 @@ function handleDropOnTerm(e, targetTermId) {
   const { type, courseId } = data;
   addCourseToTerm(targetTermId, courseId);
   draggedData = null;
+}
+
+// Touch Drag & Drop Adapter for Android and Touchscreen Devices
+function initTouchDragAndDrop() {
+  let touchDragActive = false;
+  let touchStartPos = { x: 0, y: 0 };
+  let touchDragData = null;
+  let touchDragSourceEl = null;
+  let dragCloneEl = null;
+
+  document.addEventListener('touchstart', (e) => {
+    if (e.touches.length !== 1) return;
+    const touch = e.touches[0];
+
+    // Ignore interactive UI controls (buttons, inputs, select dropdowns, color pickers)
+    if (e.target.closest('button, input, select, a, .native-color-picker, .card-expand-btn, .edit-course-btn, .delete-course-btn, .action-btn-sm, .delete-term-btn, .term-status-badge')) {
+      return;
+    }
+
+    const cardEl = e.target.closest('.course-card[draggable="true"], .course-card[data-type="bank-card"]');
+    const rowEl = e.target.closest('tr.course-row[draggable="true"], tr[data-type="term-row"]');
+
+    const draggableEl = cardEl || rowEl;
+    if (!draggableEl) return;
+
+    touchStartPos = { x: touch.clientX, y: touch.clientY };
+    touchDragSourceEl = draggableEl;
+
+    if (cardEl && !cardEl.classList.contains('assigned-card')) {
+      touchDragData = {
+        type: 'bank-card',
+        courseId: cardEl.dataset.courseId
+      };
+    } else if (rowEl && rowEl.dataset.courseId) {
+      touchDragData = {
+        type: 'term-row',
+        courseId: rowEl.dataset.courseId,
+        fromTerm: rowEl.dataset.fromTerm
+      };
+    } else {
+      touchDragData = null;
+    }
+  }, { passive: true });
+
+  document.addEventListener('touchmove', (e) => {
+    if (!touchDragSourceEl || !touchDragData || e.touches.length !== 1) return;
+    const touch = e.touches[0];
+    const dx = touch.clientX - touchStartPos.x;
+    const dy = touch.clientY - touchStartPos.y;
+    const dist = Math.hypot(dx, dy);
+
+    if (!touchDragActive) {
+      if (dist > 8) {
+        touchDragActive = true;
+        draggedData = touchDragData;
+        touchDragSourceEl.classList.add('dragging');
+
+        // Create floating preview clone
+        dragCloneEl = touchDragSourceEl.cloneNode(true);
+        dragCloneEl.classList.add('touch-drag-clone');
+        dragCloneEl.style.position = 'fixed';
+        dragCloneEl.style.pointerEvents = 'none';
+        dragCloneEl.style.zIndex = '99999';
+        dragCloneEl.style.opacity = '0.9';
+        dragCloneEl.style.width = Math.min(touchDragSourceEl.offsetWidth, 320) + 'px';
+        dragCloneEl.style.transform = 'translate(-50%, -50%) scale(1.03)';
+        dragCloneEl.style.boxShadow = '0 12px 28px rgba(0,0,0,0.5)';
+        dragCloneEl.style.borderRadius = '8px';
+        dragCloneEl.style.background = 'var(--panel-bg)';
+        dragCloneEl.style.border = '2px solid var(--accent-primary)';
+        document.body.appendChild(dragCloneEl);
+
+        if (navigator.vibrate) {
+          try { navigator.vibrate(25); } catch (err) {}
+        }
+      } else {
+        return;
+      }
+    }
+
+    if (touchDragActive) {
+      if (e.cancelable) e.preventDefault();
+
+      // Update clone position
+      if (dragCloneEl) {
+        dragCloneEl.style.left = touch.clientX + 'px';
+        dragCloneEl.style.top = touch.clientY + 'px';
+      }
+
+      // Auto-scroll window if finger is near top or bottom screen edge
+      if (touch.clientY < 90) {
+        window.scrollBy({ top: -14, behavior: 'instant' });
+      } else if (touch.clientY > window.innerHeight - 90) {
+        window.scrollBy({ top: 14, behavior: 'instant' });
+      }
+
+      // Highlight drop target under finger
+      const targetEl = document.elementFromPoint(touch.clientX, touch.clientY);
+      clearTouchHoverStates();
+
+      if (targetEl) {
+        const hoverRow = targetEl.closest('tr.course-row');
+        const hoverTermCard = targetEl.closest('.term-card');
+        const hoverBank = targetEl.closest('.course-bank-sidebar, .bank-cards-container, .bank-panel');
+
+        if (hoverRow && hoverRow !== touchDragSourceEl) {
+          const rect = hoverRow.getBoundingClientRect();
+          const isUpperHalf = touch.clientY < (rect.top + rect.height / 2);
+          hoverRow.classList.add(isUpperHalf ? 'drag-over-top' : 'drag-over-bottom');
+        } else if (hoverTermCard) {
+          hoverTermCard.classList.add('drag-over-active');
+        } else if (hoverBank && touchDragData.fromTerm) {
+          const bankCards = document.getElementById('bankCardsContainer');
+          if (bankCards) bankCards.classList.add('drag-over-active');
+        }
+      }
+    }
+  }, { passive: false });
+
+  function cleanupTouchDrag() {
+    if (dragCloneEl) {
+      dragCloneEl.remove();
+      dragCloneEl = null;
+    }
+    if (touchDragSourceEl) {
+      touchDragSourceEl.classList.remove('dragging');
+      touchDragSourceEl = null;
+    }
+    clearTouchHoverStates();
+    touchDragActive = false;
+    touchDragData = null;
+  }
+
+  function clearTouchHoverStates() {
+    document.querySelectorAll('.term-card, .bank-cards-container, #bankCardsContainer').forEach(el => {
+      el.classList.remove('drag-over-active');
+    });
+    document.querySelectorAll('.course-row').forEach(el => {
+      el.classList.remove('drag-over-top', 'drag-over-bottom');
+    });
+  }
+
+  document.addEventListener('touchend', (e) => {
+    if (!touchDragActive || !touchDragData) {
+      cleanupTouchDrag();
+      return;
+    }
+
+    if (e.changedTouches.length > 0) {
+      const touch = e.changedTouches[0];
+      const targetEl = document.elementFromPoint(touch.clientX, touch.clientY);
+
+      if (targetEl) {
+        const hoverRow = targetEl.closest('tr.course-row');
+        const hoverTermCard = targetEl.closest('.term-card');
+        const hoverBank = targetEl.closest('.course-bank-sidebar, .bank-cards-container, .bank-panel');
+
+        if (hoverRow) {
+          const termId = hoverRow.dataset.fromTerm || hoverRow.closest('.term-table-body')?.dataset.termId;
+          if (termId) {
+            const rect = hoverRow.getBoundingClientRect();
+            const isUpperHalf = touch.clientY < (rect.top + rect.height / 2);
+            const termList = state.curriculum[termId] || [];
+            let targetIdx = termList.indexOf(hoverRow.dataset.courseId);
+            if (targetIdx === -1) targetIdx = termList.length;
+            if (!isUpperHalf) targetIdx += 1;
+
+            moveCourseToPosition(touchDragData.fromTerm, touchDragData.courseId, termId, targetIdx);
+            showToast(`Moved course into term position`);
+          }
+        } else if (hoverTermCard) {
+          const termId = hoverTermCard.dataset.termId;
+          if (termId) {
+            addCourseToTerm(termId, touchDragData.courseId);
+            showToast(`Added course to ${formatTermName(termId)}`);
+          }
+        } else if (hoverBank && touchDragData.fromTerm) {
+          removeCourseFromTerm(touchDragData.fromTerm, touchDragData.courseId);
+          showToast(`Removed course back to repository`);
+        }
+      }
+    }
+
+    cleanupTouchDrag();
+    draggedData = null;
+  });
+
+  document.addEventListener('touchcancel', cleanupTouchDrag);
 }
 
 // Course State Mutation Methods

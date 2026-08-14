@@ -1941,3 +1941,15 @@ tr.course-row.drag-over-bottom {
     background: #fff !important;
   }
 }
+
+/* Mobile Touch Drag-and-Drop Enhancements */
+.touch-drag-clone {
+  transition: none !important;
+  pointer-events: none !important;
+  z-index: 99999 !important;
+  touch-action: none !important;
+}
+
+.course-card, tr.course-row {
+  touch-action: manipulation;
+}
