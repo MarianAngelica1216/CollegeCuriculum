@@ -474,6 +474,41 @@ body {
   border: 1px solid var(--panel-border) !important;
 }
 
+.add-term-btn,
+.reset-year-btn {
+  font-family: inherit;
+  font-size: 0.76rem;
+  font-weight: 700;
+  padding: 4px 10px;
+  border-radius: var(--radius-xs);
+  background: var(--bg-secondary);
+  color: var(--text-main);
+  border: 1px solid var(--panel-border);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  transition: all var(--transition-fast);
+  box-shadow: var(--shadow-sm);
+}
+
+.add-term-btn:hover {
+  background: var(--accent-primary);
+  color: #ffffff;
+  border-color: var(--accent-hover);
+}
+
+.reset-year-btn {
+  color: var(--text-muted);
+}
+
+.reset-year-btn:hover {
+  color: var(--accent-rose);
+  border-color: rgba(214, 40, 40, 0.4);
+  background: rgba(214, 40, 40, 0.1);
+}
+
+
 /* Term Table Card */
 .term-card {
   background: var(--panel-bg);

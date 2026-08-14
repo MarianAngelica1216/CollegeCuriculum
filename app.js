@@ -190,13 +190,9 @@ function bindEvents() {
     saveState();
   });
 
-  // Reset to Defaults
+  // Reset to Defaults (Opens Modal with Single-Year or Full Reset Options)
   dom.resetBtn.addEventListener('click', () => {
-    if (confirm('Reset curriculum to default Mapúa BS Computer Science template? All custom changes will be reset.')) {
-      loadDefaults();
-      render();
-      showToast('Reset to default curriculum template');
-    }
+    openResetModal();
   });
 
   // Print View
@@ -290,10 +286,6 @@ function bindEvents() {
   // Filter Menu Select Changes
   dom.repoStatusFilterSelect.addEventListener('change', (e) => {
     state.statusFilter = e.target.value;
-    if (state.statusFilter === 'finished' && state.bankFilter === 'unassigned') {
-      state.bankFilter = 'all';
-      updateBankFilterTabsUI();
-    }
     updateRepoFilterIndicator();
     renderBankCards();
   });
@@ -301,10 +293,6 @@ function bindEvents() {
   if (dom.repoUnitsFilterSelect) {
     dom.repoUnitsFilterSelect.addEventListener('change', (e) => {
       state.unitsFilter = e.target.value;
-      if (state.unitsFilter !== 'all' && state.bankFilter === 'unassigned') {
-        state.bankFilter = 'all';
-        updateBankFilterTabsUI();
-      }
       updateRepoFilterIndicator();
       renderBankCards();
     });
@@ -335,9 +323,17 @@ function bindEvents() {
     }
   });
 
-  // Handle + Add Term button clicks
+  // Handle + Add Term & Reset Year button clicks
   if (dom.curriculumContainer) {
     dom.curriculumContainer.addEventListener('click', (e) => {
+      const resetBtn = e.target.closest('.reset-year-btn');
+      if (resetBtn) {
+        const year = parseInt(resetBtn.dataset.year, 10);
+        if (year) {
+          resetYearCurriculum(year);
+        }
+        return;
+      }
       const btn = e.target.closest('.add-term-btn');
       if (btn) {
         const year = parseInt(btn.dataset.year, 10);
@@ -667,6 +663,60 @@ function deleteTermTable(termId) {
   }
 }
 
+// Reset curriculum terms and courses for a single specified year
+function resetYearCurriculum(yearNum, skipConfirm = false) {
+  if (!skipConfirm) {
+    if (!confirm(`Reset Year ${yearNum} curriculum to default template? Custom changes in Year ${yearNum} will be reset.`)) {
+      return;
+    }
+  }
+
+  const prefix = `y${yearNum}-t`;
+
+  // Default terms for this year in DEFAULT_CURRICULUM_PLAN (e.g. y1-t1, y1-t2, y1-t3, y1-t4)
+  const defaultTermKeys = Object.keys(DEFAULT_CURRICULUM_PLAN).filter(k => k.startsWith(prefix));
+
+  // Current terms for this year in state.curriculum
+  const currentTermKeys = Object.keys(state.curriculum).filter(k => k.startsWith(prefix));
+
+  // 1. Remove terms currently in state for Year yearNum that are not in DEFAULT_CURRICULUM_PLAN
+  currentTermKeys.forEach(tId => {
+    if (!defaultTermKeys.includes(tId)) {
+      delete state.curriculum[tId];
+      delete state.termStatuses[tId];
+    }
+  });
+
+  // 2. Restore default courses and statuses for each default term in Year yearNum
+  const defaultStatuses = getDefaultTermStatuses();
+  defaultTermKeys.forEach(tId => {
+    const defaultCourseIds = DEFAULT_CURRICULUM_PLAN[tId] || [];
+    state.curriculum[tId] = [...defaultCourseIds];
+    state.termStatuses[tId] = defaultStatuses[tId] || 'upcoming';
+
+    // Restore default course objects if deleted from state.courses
+    defaultCourseIds.forEach(cId => {
+      if (!state.courses.some(c => c.id === cId)) {
+        const origCourse = DEFAULT_COURSES.find(c => c.id === cId);
+        if (origCourse) {
+          state.courses.push({ ...origCourse });
+        }
+      }
+    });
+
+    // Remove these course IDs from terms OUTSIDE Year yearNum to preserve 1-to-1 uniqueness
+    Object.keys(state.curriculum).forEach(otherTermId => {
+      if (!otherTermId.startsWith(prefix)) {
+        state.curriculum[otherTermId] = (state.curriculum[otherTermId] || []).filter(id => !defaultCourseIds.includes(id));
+      }
+    });
+  });
+
+  saveState();
+  render();
+  showToast(`Reset Year ${yearNum} curriculum to default template`);
+}
+
 let currentSlideDirection = '';
 
 function getYearNumericIndex(y) {
@@ -771,10 +821,16 @@ function renderCurriculumGrid() {
         yearHeader.className = 'year-section-header compare-year-header';
         yearHeader.innerHTML = `
           <div class="year-section-title">YEAR ${y}</div>
-          <div style="display:flex; gap:12px; align-items:center;">
+          <div style="display:flex; gap:8px; align-items:center;">
             <div class="year-units-badge" style="font-size:0.75rem;">School: ${schoolYearUnits.toFixed(1)}u</div>
             <div class="year-units-badge" style="font-size:0.75rem;">My Plan: ${userYearUnits.toFixed(1)}u</div>
             <button class="add-term-btn" data-year="${y}" title="Add term table to Year ${y}">+ Add Term</button>
+            <button class="reset-year-btn" data-year="${y}" title="Reset Year ${y} to default template">
+              <svg width="13" height="13" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+              </svg>
+              <span>Reset Year ${y}</span>
+            </button>
           </div>
         `;
         compareWrapper.appendChild(yearHeader);
@@ -843,9 +899,15 @@ function renderCurriculumGrid() {
         yearSection.innerHTML = `
           <div class="year-section-header">
             <div class="year-section-title">YEAR ${y}</div>
-            <div style="display:flex; gap:12px; align-items:center;">
+            <div style="display:flex; gap:8px; align-items:center;">
               <div class="year-units-badge">${yearUnits.toFixed(1)} Total Units</div>
               <button class="add-term-btn" data-year="${y}" title="Add a term table to Year ${y}">+ Add Term</button>
+              <button class="reset-year-btn" data-year="${y}" title="Reset Year ${y} to default template">
+                <svg width="13" height="13" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+                </svg>
+                <span>Reset Year ${y}</span>
+              </button>
             </div>
           </div>
           <div class="terms-grid grid-all" id="year-grid-${y}"></div>
@@ -876,7 +938,15 @@ function renderCurriculumGrid() {
       yearHeader.style.marginBottom = '16px';
       yearHeader.innerHTML = `
         <div class="year-section-title">YEAR ${yearNum}</div>
-        <button class="add-term-btn" data-year="${yearNum}">+ Add Term to Year ${yearNum}</button>
+        <div style="display:flex; gap:8px; align-items:center;">
+          <button class="add-term-btn" data-year="${yearNum}">+ Add Term to Year ${yearNum}</button>
+          <button class="reset-year-btn" data-year="${yearNum}" title="Reset Year ${yearNum} to default template">
+            <svg width="13" height="13" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+            </svg>
+            <span>Reset Year ${yearNum}</span>
+          </button>
+        </div>
       `;
       container.appendChild(yearHeader);
 
@@ -1418,12 +1488,7 @@ function renderBankCards() {
   let filteredCourses = state.courses;
 
   // 1. Repository Nav Tab Filter
-  const hasActiveUnitsFilter = state.unitsFilter && state.unitsFilter !== 'all';
-  const hasActiveStatusFilter = state.statusFilter && state.statusFilter !== 'all';
-
-  if ((hasActiveUnitsFilter || state.statusFilter === 'finished') && state.bankFilter === 'unassigned') {
-    // When specific units or finished status is selected, bypass 'unassigned' tab restriction
-  } else if (state.bankFilter === 'unassigned') {
+  if (state.bankFilter === 'unassigned') {
     filteredCourses = filteredCourses.filter(c => !assignedMap.has(c.id));
   } else if (state.bankFilter === 'assigned') {
     filteredCourses = filteredCourses.filter(c => assignedMap.has(c.id));
@@ -2178,6 +2243,73 @@ function openAddCourseModal() {
     closeEditModal();
     render();
     showToast(`Created course ${code} in repository`);
+  });
+}
+
+// Reset Options Modal Logic
+function openResetModal() {
+  dom.editModal.innerHTML = `
+    <div class="modal-card">
+      <div class="modal-header">
+        <div class="modal-title">Reset Curriculum</div>
+        <button class="close-modal-btn" id="modalCloseBtn">&times;</button>
+      </div>
+      <p style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 16px; line-height: 1.4;">
+        Choose whether to reset a single year while leaving the rest untouched, or restore all 4 years to the default Mapúa template.
+      </p>
+      
+      <div style="display: flex; flex-direction: column; gap: 10px; margin-bottom: 16px;">
+        <button class="btn btn-secondary reset-option-btn" data-year="1" style="justify-content: space-between; text-align: left; padding: 10px 14px;">
+          <span><strong>Reset Year 1 Only</strong> (Term 1 - Term 4)</span>
+          <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"></path></svg>
+        </button>
+        <button class="btn btn-secondary reset-option-btn" data-year="2" style="justify-content: space-between; text-align: left; padding: 10px 14px;">
+          <span><strong>Reset Year 2 Only</strong> (Term 1 - Term 4)</span>
+          <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"></path></svg>
+        </button>
+        <button class="btn btn-secondary reset-option-btn" data-year="3" style="justify-content: space-between; text-align: left; padding: 10px 14px;">
+          <span><strong>Reset Year 3 Only</strong> (Term 1 - Term 4)</span>
+          <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"></path></svg>
+        </button>
+        <button class="btn btn-secondary reset-option-btn" data-year="4" style="justify-content: space-between; text-align: left; padding: 10px 14px;">
+          <span><strong>Reset Year 4 Only</strong> (Term 1 - Term 4)</span>
+          <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"></path></svg>
+        </button>
+      </div>
+
+      <div style="border-top: 1px solid var(--panel-border); padding-top: 14px; display: flex; justify-content: space-between; align-items: center;">
+        <button class="btn btn-secondary" id="modalFullResetBtn" style="color: var(--accent-rose); border-color: rgba(214, 40, 40, 0.4);">Reset All Years (Full Reset)</button>
+        <button class="btn btn-secondary" id="modalCancelBtn">Cancel</button>
+      </div>
+    </div>
+  `;
+
+  dom.editModal.classList.add('active');
+
+  const closeBtn = document.getElementById('modalCloseBtn');
+  const cancelBtn = document.getElementById('modalCancelBtn');
+  const fullResetBtn = document.getElementById('modalFullResetBtn');
+
+  closeBtn.addEventListener('click', closeEditModal);
+  cancelBtn.addEventListener('click', closeEditModal);
+
+  fullResetBtn.addEventListener('click', () => {
+    if (confirm('Reset full curriculum to default Mapúa BS Computer Science template? All custom changes across all years will be reset.')) {
+      loadDefaults();
+      closeEditModal();
+      render();
+      showToast('Reset to default curriculum template');
+    }
+  });
+
+  document.querySelectorAll('.reset-option-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const year = parseInt(btn.dataset.year, 10);
+      if (year) {
+        closeEditModal();
+        resetYearCurriculum(year);
+      }
+    });
   });
 }
 
