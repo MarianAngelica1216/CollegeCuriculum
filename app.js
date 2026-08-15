@@ -238,6 +238,23 @@ function bindEvents() {
       dom.courseBankSidebar.classList.remove('collapsed');
       dom.bankSquareBtn.classList.add('hidden');
     });
+
+    dom.bankSquareBtn.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      dom.bankSquareBtn.classList.add('drag-over-active');
+    });
+    dom.bankSquareBtn.addEventListener('dragleave', () => {
+      dom.bankSquareBtn.classList.remove('drag-over-active');
+    });
+    dom.bankSquareBtn.addEventListener('drop', (e) => {
+      e.preventDefault();
+      dom.bankSquareBtn.classList.remove('drag-over-active');
+      const dragData = getDragData(e);
+      if (dragData && dragData.fromTerm) {
+        removeCourseFromTerm(dragData.fromTerm, dragData.courseId);
+        showToast('Removed course from term');
+      }
+    });
   }
 
   // Recalculate sliding tab indicator positions on window resize
@@ -365,6 +382,13 @@ function bindEvents() {
   // Modal Overlay Close
   dom.editModal.addEventListener('click', (e) => {
     if (e.target === dom.editModal) closeEditModal();
+  });
+
+  // Collapse repo on drag when dragging out of sidebar window
+  document.addEventListener('dragover', (e) => {
+    if (draggedData && e.clientY) {
+      checkCollapseRepoOnDrag(e.clientY);
+    }
   });
 }
 
@@ -1735,6 +1759,18 @@ let draggedData = null;
 let touchDragGhost = null;
 let touchDragData = null;
 
+function checkCollapseRepoOnDrag(clientY) {
+  if (window.innerWidth <= 1024 && dom.courseBankSidebar && !dom.courseBankSidebar.classList.contains('collapsed')) {
+    const rect = dom.courseBankSidebar.getBoundingClientRect();
+    if (clientY && clientY < rect.top - 10) {
+      dom.courseBankSidebar.classList.add('collapsed');
+      if (dom.bankSquareBtn) {
+        dom.bankSquareBtn.classList.remove('hidden');
+      }
+    }
+  }
+}
+
 function setupTouchDrag(el, dataGetter) {
   let touchStartX = 0;
   let touchStartY = 0;
@@ -1773,13 +1809,15 @@ function setupTouchDrag(el, dataGetter) {
 
     if (isDragging) {
       if (e.cancelable) e.preventDefault();
+      checkCollapseRepoOnDrag(touch.clientY);
+
       if (touchDragGhost) {
         touchDragGhost.style.left = `${touch.clientX - el.offsetWidth / 2}px`;
         touchDragGhost.style.top = `${touch.clientY - 20}px`;
       }
 
       const elemBelow = document.elementFromPoint(touch.clientX, touch.clientY);
-      document.querySelectorAll('.term-card, .bank-cards-container').forEach(cardEl => {
+      document.querySelectorAll('.term-card, .bank-cards-container, #bankSquareBtn').forEach(cardEl => {
         if (elemBelow && (cardEl.contains(elemBelow) || cardEl === elemBelow)) {
           cardEl.classList.add('drag-over-active');
         } else {
@@ -1803,7 +1841,7 @@ function setupTouchDrag(el, dataGetter) {
       touchDragGhost = null;
     }
 
-    document.querySelectorAll('.term-card, .bank-cards-container').forEach(cardEl => {
+    document.querySelectorAll('.term-card, .bank-cards-container, #bankSquareBtn').forEach(cardEl => {
       cardEl.classList.remove('drag-over-active');
     });
 
@@ -1813,6 +1851,8 @@ function setupTouchDrag(el, dataGetter) {
       if (elemBelow) {
         const termCard = elemBelow.closest('.term-card');
         const courseRow = elemBelow.closest('tr.course-row');
+        const squareBtn = elemBelow.closest('#bankSquareBtn');
+        const bankContainer = elemBelow.closest('.bank-cards-container') || elemBelow.closest('.course-bank-sidebar');
 
         if (courseRow && courseRow.dataset.fromTerm) {
           const targetTermId = courseRow.dataset.fromTerm;
@@ -1827,8 +1867,9 @@ function setupTouchDrag(el, dataGetter) {
         } else if (termCard && termCard.dataset.termId) {
           const targetTermId = termCard.dataset.termId;
           addCourseToTerm(targetTermId, touchDragData.courseId);
-        } else if (elemBelow.closest('.bank-cards-container') && touchDragData.fromTerm) {
+        } else if ((squareBtn || bankContainer) && touchDragData.fromTerm) {
           removeCourseFromTerm(touchDragData.fromTerm, touchDragData.courseId);
+          showToast('Removed course from term');
         }
       }
     }
