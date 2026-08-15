@@ -506,11 +506,62 @@ function updateBankFilterTabsUI() {
 
 // Master Render Function
 function render() {
+  // 1. Capture exact scroll coordinates across all scroll containers before DOM re-render
+  const windowY = window.scrollY || window.pageYOffset || document.documentElement.scrollTop || document.body.scrollTop || 0;
+  const windowX = window.scrollX || window.pageXOffset || document.documentElement.scrollLeft || document.body.scrollLeft || 0;
+
+  const curriculumArea = document.querySelector('.curriculum-area');
+  const currY = curriculumArea ? curriculumArea.scrollTop : 0;
+  const currX = curriculumArea ? curriculumArea.scrollLeft : 0;
+
+  const bankContainer = dom.bankCardsContainer;
+  const bankY = bankContainer ? bankContainer.scrollTop : 0;
+
+  const sidebar = dom.courseBankSidebar;
+  const sidebarY = sidebar ? sidebar.scrollTop : 0;
+
+  // 2. Lock container heights to prevent mobile document height collapse during innerHTML clearing
+  if (dom.curriculumContainer && dom.curriculumContainer.offsetHeight > 0) {
+    dom.curriculumContainer.style.minHeight = `${dom.curriculumContainer.offsetHeight}px`;
+  }
+  if (dom.bankCardsContainer && dom.bankCardsContainer.offsetHeight > 0) {
+    dom.bankCardsContainer.style.minHeight = `${dom.bankCardsContainer.offsetHeight}px`;
+  }
+
+  // 3. Perform DOM re-render
   updateTabsUI();
   updateBankFilterTabsUI();
   renderCurriculumGrid();
   renderBankCards();
   renderHeaderStats();
+
+  // 4. Release min-height locks
+  if (dom.curriculumContainer) {
+    dom.curriculumContainer.style.minHeight = '';
+  }
+  if (dom.bankCardsContainer) {
+    dom.bankCardsContainer.style.minHeight = '';
+  }
+
+  // 5. Restore exact scroll coordinates
+  const restoreScroll = () => {
+    window.scrollTo({ top: windowY, left: windowX, behavior: 'instant' });
+    if (curriculumArea) {
+      curriculumArea.scrollTop = currY;
+      curriculumArea.scrollLeft = currX;
+    }
+    if (bankContainer) {
+      bankContainer.scrollTop = bankY;
+    }
+    if (sidebar) {
+      sidebar.scrollTop = sidebarY;
+    }
+  };
+
+  restoreScroll();
+  requestAnimationFrame(restoreScroll);
+  setTimeout(restoreScroll, 20);
+  setTimeout(restoreScroll, 60);
 }
 
 // Calculate Prerequisite Conflicts
@@ -1269,11 +1320,14 @@ function renderTermCard(year, term, conflicts, options) {
         }
 
         // Drag event handlers on row for intra-term reordering & row placement
-        tr.addEventListener('dragstart', (e) => handleDragStart(e, {
+        const rowDragData = {
           type: 'term-row',
           courseId: course.id,
           fromTerm: termId
-        }));
+        };
+
+        tr.addEventListener('dragstart', (e) => handleDragStart(e, rowDragData));
+        setupTouchDrag(tr, rowDragData);
 
         tr.addEventListener('dragover', (e) => {
           e.preventDefault();
@@ -1615,12 +1669,15 @@ function renderBankCards() {
         jumpToAssignedCourse(course.id, assignedTermId);
       });
     } else {
-      // Drag start/end handlers for unassigned sidebar card
-      card.addEventListener('dragstart', (e) => handleDragStart(e, {
+      // Enable HTML5 and Mobile Touch Drag
+      const bankDragData = {
         type: 'bank-card',
         courseId: course.id
-      }));
+      };
+
+      card.addEventListener('dragstart', (e) => handleDragStart(e, bankDragData));
       card.addEventListener('dragend', handleDragEnd);
+      setupTouchDrag(card, bankDragData);
     }
 
     // Assign button click handler in expanded card details
@@ -1675,6 +1732,122 @@ function renderBankCards() {
 
 // Drag & Drop Handlers
 let draggedData = null;
+let touchDragGhost = null;
+let touchDragData = null;
+
+function setupTouchDrag(el, dataGetter) {
+  let touchStartX = 0;
+  let touchStartY = 0;
+  let isDragging = false;
+
+  el.addEventListener('touchstart', (e) => {
+    if (e.touches.length !== 1) return;
+    const touch = e.touches[0];
+    touchStartX = touch.clientX;
+    touchStartY = touch.clientY;
+    isDragging = false;
+    touchDragData = typeof dataGetter === 'function' ? dataGetter() : dataGetter;
+  }, { passive: true });
+
+  el.addEventListener('touchmove', (e) => {
+    if (!touchDragData || e.touches.length !== 1) return;
+    const touch = e.touches[0];
+    const dx = Math.abs(touch.clientX - touchStartX);
+    const dy = Math.abs(touch.clientY - touchStartY);
+
+    if (!isDragging && (dx > 8 || dy > 8)) {
+      isDragging = true;
+      draggedData = touchDragData;
+      el.classList.add('dragging');
+
+      touchDragGhost = el.cloneNode(true);
+      touchDragGhost.style.position = 'fixed';
+      touchDragGhost.style.pointerEvents = 'none';
+      touchDragGhost.style.zIndex = '99999';
+      touchDragGhost.style.opacity = '0.85';
+      touchDragGhost.style.width = `${el.offsetWidth}px`;
+      touchDragGhost.style.boxShadow = '0 12px 28px rgba(0, 0, 0, 0.4)';
+      touchDragGhost.style.transform = 'scale(0.95)';
+      document.body.appendChild(touchDragGhost);
+    }
+
+    if (isDragging) {
+      if (e.cancelable) e.preventDefault();
+      if (touchDragGhost) {
+        touchDragGhost.style.left = `${touch.clientX - el.offsetWidth / 2}px`;
+        touchDragGhost.style.top = `${touch.clientY - 20}px`;
+      }
+
+      const elemBelow = document.elementFromPoint(touch.clientX, touch.clientY);
+      document.querySelectorAll('.term-card, .bank-cards-container').forEach(cardEl => {
+        if (elemBelow && (cardEl.contains(elemBelow) || cardEl === elemBelow)) {
+          cardEl.classList.add('drag-over-active');
+        } else {
+          cardEl.classList.remove('drag-over-active');
+        }
+      });
+    }
+  }, { passive: false });
+
+  el.addEventListener('touchend', (e) => {
+    if (!isDragging) {
+      touchDragData = null;
+      return;
+    }
+    if (e.cancelable) e.preventDefault();
+    isDragging = false;
+    el.classList.remove('dragging');
+
+    if (touchDragGhost) {
+      touchDragGhost.remove();
+      touchDragGhost = null;
+    }
+
+    document.querySelectorAll('.term-card, .bank-cards-container').forEach(cardEl => {
+      cardEl.classList.remove('drag-over-active');
+    });
+
+    const touch = e.changedTouches[0];
+    if (touch && touchDragData) {
+      const elemBelow = document.elementFromPoint(touch.clientX, touch.clientY);
+      if (elemBelow) {
+        const termCard = elemBelow.closest('.term-card');
+        const courseRow = elemBelow.closest('tr.course-row');
+
+        if (courseRow && courseRow.dataset.fromTerm) {
+          const targetTermId = courseRow.dataset.fromTerm;
+          const rect = courseRow.getBoundingClientRect();
+          const isUpperHalf = touch.clientY < (rect.top + rect.height / 2);
+          const termList = state.curriculum[targetTermId] || [];
+          let targetIdx = termList.indexOf(courseRow.dataset.courseId);
+          if (!isUpperHalf && targetIdx !== -1) targetIdx += 1;
+          if (targetIdx === -1) targetIdx = termList.length;
+
+          moveCourseToPosition(touchDragData.fromTerm, touchDragData.courseId, targetTermId, targetIdx);
+        } else if (termCard && termCard.dataset.termId) {
+          const targetTermId = termCard.dataset.termId;
+          addCourseToTerm(targetTermId, touchDragData.courseId);
+        } else if (elemBelow.closest('.bank-cards-container') && touchDragData.fromTerm) {
+          removeCourseFromTerm(touchDragData.fromTerm, touchDragData.courseId);
+        }
+      }
+    }
+
+    touchDragData = null;
+    draggedData = null;
+  });
+
+  el.addEventListener('touchcancel', () => {
+    isDragging = false;
+    el.classList.remove('dragging');
+    if (touchDragGhost) {
+      touchDragGhost.remove();
+      touchDragGhost = null;
+    }
+    touchDragData = null;
+    draggedData = null;
+  });
+}
 
 function handleDragStart(e, data) {
   draggedData = data;
